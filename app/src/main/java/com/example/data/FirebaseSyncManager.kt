@@ -263,7 +263,11 @@ private fun DataSnapshot.toUserEntity(): UserEntity? {
         val gameUid = child("gameUid").getValue(String::class.java) ?: ""
         val referCode = child("referCode").getValue(String::class.java) ?: ""
         val inboxMessage = child("inboxMessage").getValue(String::class.java) ?: ""
-        UserEntity(emailKey, name, email, mainWallet, bonusWallet, winningWallet, coins, matchesPlayed, matchesWon, banned, isAdmin, password, gameUid, referCode, inboxMessage)
+        val lastGameUidChangeTime = child("lastGameUidChangeTime").getValue(Long::class.java) ?: 0L
+        val joinedTournaments = child("joinedTournaments").getValue(String::class.java) ?: ""
+        val dailyRewardDay = child("dailyRewardDay").getValue(Int::class.java) ?: 1
+        val lastDailyRewardTime = child("lastDailyRewardTime").getValue(Long::class.java) ?: 0L
+        UserEntity(emailKey, name, email, mainWallet, bonusWallet, winningWallet, coins, matchesPlayed, matchesWon, banned, isAdmin, password, gameUid, referCode, inboxMessage, lastGameUidChangeTime, joinedTournaments, dailyRewardDay, lastDailyRewardTime)
     } catch (e: Exception) {
         null
     }
@@ -285,7 +289,8 @@ private fun DataSnapshot.toTournamentEntity(): TournamentEntity? {
         val roomId = child("roomId").getValue(String::class.java) ?: ""
         val roomPassword = child("roomPassword").getValue(String::class.java) ?: ""
         val bannerUrl = child("bannerUrl").getValue(String::class.java) ?: ""
-        TournamentEntity(id, title, gameType, mapType, entryFee, prizePool, slotsFilled, totalSlots, adsRequired, scheduleTimeMillis, status, roomId, roomPassword, bannerUrl)
+        val description = child("description").getValue(String::class.java) ?: ""
+        TournamentEntity(id, title, gameType, mapType, entryFee, prizePool, slotsFilled, totalSlots, adsRequired, scheduleTimeMillis, status, roomId, roomPassword, bannerUrl, description)
     } catch (e: Exception) {
         null
     }
@@ -314,7 +319,8 @@ private fun DataSnapshot.toTransactionRecordEntity(): TransactionRecordEntity? {
         val status = child("status").getValue(String::class.java) ?: ""
         val timestamp = child("timestamp").getValue(Long::class.java) ?: 0L
         val details = child("details").getValue(String::class.java) ?: ""
-        TransactionRecordEntity(id, emailKey, type, amount, coins, status, timestamp, details)
+        val screenshotUrl = child("screenshotUrl").getValue(String::class.java) ?: ""
+        TransactionRecordEntity(id, emailKey, type, amount, coins, status, timestamp, details, screenshotUrl)
     } catch (e: Exception) {
         null
     }

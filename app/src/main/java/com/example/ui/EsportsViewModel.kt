@@ -70,6 +70,19 @@ class EsportsViewModel(
     private val _unityInterstitialId = MutableStateFlow("Interstitial_Android")
     val unityInterstitialId: StateFlow<String> = _unityInterstitialId.asStateFlow()
 
+    private val _epNumber = MutableStateFlow("")
+    val epNumber: StateFlow<String> = _epNumber.asStateFlow()
+    private val _epTitle = MutableStateFlow("")
+    val epTitle: StateFlow<String> = _epTitle.asStateFlow()
+
+    private val _jcNumber = MutableStateFlow("")
+    val jcNumber: StateFlow<String> = _jcNumber.asStateFlow()
+    private val _jcTitle = MutableStateFlow("")
+    val jcTitle: StateFlow<String> = _jcTitle.asStateFlow()
+    
+    private val _minWithdraw = MutableStateFlow("50")
+    val minWithdraw: StateFlow<String> = _minWithdraw.asStateFlow()
+
     // Watch cooldown timer state (seconds active count from preferences)
     private val _cooldowns = MutableStateFlow<Map<String, Int>>(emptyMap())
     val cooldowns: StateFlow<Map<String, Int>> = _cooldowns.asStateFlow()
@@ -127,10 +140,38 @@ class EsportsViewModel(
                     _unityGameId.value = snapshot.child("unity_game_id").getValue(String::class.java) ?: "5763487"
                     _unityRewardedId.value = snapshot.child("unity_rewarded_id").getValue(String::class.java) ?: "Rewarded_Android"
                     _unityInterstitialId.value = snapshot.child("unity_interstitial_id").getValue(String::class.java) ?: "Interstitial_Android"
+                    _epNumber.value = snapshot.child("ep_number").getValue(String::class.java) ?: ""
+                    _epTitle.value = snapshot.child("ep_title").getValue(String::class.java) ?: ""
+                    _jcNumber.value = snapshot.child("jc_number").getValue(String::class.java) ?: ""
+                    _jcTitle.value = snapshot.child("jc_title").getValue(String::class.java) ?: ""
+                    _minWithdraw.value = snapshot.child("min_withdraw").getValue(String::class.java) ?: "50"
+                    
+                    // Dynamic automatic pre-initialization of Unity Ads with admin configurations
+                    preInitializeUnityAds(_unityGameId.value)
                 }
             }
             override fun onCancelled(error: DatabaseError) {}
         })
+    }
+
+    private fun preInitializeUnityAds(gameId: String) {
+        if (gameId.isBlank()) return
+        viewModelScope.launch(Dispatchers.Main) {
+            if (!UnityAds.isInitialized) {
+                try {
+                    UnityAds.initialize(context, gameId, false, object : IUnityAdsInitializationListener {
+                        override fun onInitializationComplete() {
+                            Log.d("UnityAds", "Unity Ads pre-initialized successfully.")
+                        }
+                        override fun onInitializationFailed(error: UnityAds.UnityAdsInitializationError?, msg: String?) {
+                            Log.e("UnityAds", "Unity Ads pre-initialization failed: $msg")
+                        }
+                    })
+                } catch (e: Exception) {
+                    Log.e("UnityAds", "Unity Ads pre-initialization crashed silently: ${e.message}", e)
+                }
+            }
+        }
     }
 
     private fun loadUserSession(emailKey: String) {
@@ -138,8 +179,7 @@ class EsportsViewModel(
             _isLoading.value = true
             syncManager.startUserAndProgressSync(emailKey)
             
-            // Launch collection in a parallel coroutine so that collect (an infinite flow)
-            // does not block this parent coroutine from resetting _isLoading to false
+            // Launch collection in parallel coroutines so that infinite flows do not block
             launch {
                 dao.getUserFlow(emailKey).collect { user ->
                     if (user != null) {
@@ -151,27 +191,28 @@ class EsportsViewModel(
                             }
                         }
                         _currentUser.value = if (isForcedAdmin) user.copy(isAdmin = true) else user
-                        // Load 7-Day rewards claimed status
-                        load7DayClaims(emailKey)
                     }
                 }
             }
+
+            launch {
+                dao.getTaskProgressFlow(emailKey).collect { progressList ->
+                    _taskProgress.value = progressList
+                    val claims = progressList
+                        .filter { it.taskId.startsWith("day_") && it.claimed }
+                        .map { it.taskId.substringAfter("day_").toIntOrNull() ?: 0 }
+                        .filter { it > 0 }
+                        .toSet()
+                    _claimedDays.value = claims
+                }
+            }
+
             _isLoading.value = false
         }
     }
 
     private fun load7DayClaims(emailKey: String) {
-        viewModelScope.launch {
-            dao.getTaskProgressFlow(emailKey).collect { progressList ->
-                _taskProgress.value = progressList
-                val claims = progressList
-                    .filter { it.taskId.startsWith("day_") && it.claimed }
-                    .map { it.taskId.substringAfter("day_").toIntOrNull() ?: 0 }
-                    .filter { it > 0 }
-                    .toSet()
-                _claimedDays.value = claims
-            }
-        }
+        // No-op or keep as empty shell since we load in parallel in loadUserSession
     }
 
     // Dynamic Normalization login & register
@@ -325,34 +366,42 @@ class EsportsViewModel(
     }
 
     // 7-Day Claims Log Flow
-    fun claimDayReward(day: Int, coinsReward: Double) {
+    fun claimDailyReward(onError: (String) -> Unit) {
         val user = _currentUser.value ?: return
-        if (_claimedDays.value.contains(day)) return
-
-        // Save progress node in Firebase
-        val progress = TaskProgressEntity(
-            compositeKey = "${user.emailKey}_day_$day",
-            emailKey = user.emailKey,
-            taskId = "day_$day",
-            currentValue = 1,
-            claimed = true
+        val now = System.currentTimeMillis()
+        val oneDayMillis = 24 * 60 * 60 * 1000L
+        
+        var currentDay = if (now - user.lastDailyRewardTime > 2 * oneDayMillis && user.lastDailyRewardTime > 0) 1 else user.dailyRewardDay
+        
+        // Prevent claiming early
+        if (now - user.lastDailyRewardTime < oneDayMillis && user.lastDailyRewardTime > 0) {
+            val remainHours = 24 - ((now - user.lastDailyRewardTime) / (60 * 60 * 1000L))
+            onError("Please wait $remainHours hours for the next claim.")
+            return
+        }
+        
+        val rewardsList = listOf(5.0, 5.0, 5.0, 10.0, 5.0, 5.0, 15.0)
+        val coinsReward = rewardsList.getOrElse(currentDay - 1) { 5.0 }
+        
+        val nextDay = if (currentDay >= 7) 1 else currentDay + 1
+        
+        val updatedUser = user.copy(
+            coins = user.coins + coinsReward,
+            dailyRewardDay = nextDay,
+            lastDailyRewardTime = now
         )
-        syncManager.saveTaskProgressDirectly(progress)
-
-        // Increment user coins balance
-        val updatedUser = user.copy(coins = user.coins + coinsReward)
         syncManager.saveUserDirectly(updatedUser)
 
-        // Log Claim transaction log
         val tx = TransactionRecordEntity(
-            id = "claim_${user.emailKey}_day${day}_${UUID.randomUUID()}",
+            id = "claim_${user.emailKey}_day${currentDay}_${UUID.randomUUID()}",
             emailKey = user.emailKey,
             type = "REWARD_CLAIM",
             amount = 0.0,
             coins = coinsReward,
             status = "SUCCESS",
-            timestamp = System.currentTimeMillis(),
-            details = "Day $day consecutive reward claimed"
+            timestamp = now,
+            details = "Day $currentDay reward claimed",
+            screenshotUrl = ""
         )
         syncManager.saveTransactionDirectly(tx)
     }
@@ -363,22 +412,40 @@ class EsportsViewModel(
         val placementId = _unityRewardedId.value
         val gameId = _unityGameId.value
 
-        // Ensure Unity Ads is initialized
-        if (!UnityAds.isInitialized) {
-            UnityAds.initialize(activity.applicationContext, gameId, false, object : IUnityAdsInitializationListener {
-                override fun onInitializationComplete() {
+        if (gameId.isBlank()) {
+            activity.runOnUiThread {
+                android.widget.Toast.makeText(activity, "Unity Ads config missing. Sandbox credited.", android.widget.Toast.LENGTH_SHORT).show()
+                simulateAdWatch(tournamentId)
+                onAdShowResult(true)
+            }
+            return
+        }
+
+        activity.runOnUiThread {
+            try {
+                // Ensure Unity Ads is initialized
+                if (!UnityAds.isInitialized) {
+                    UnityAds.initialize(activity, gameId, false, object : IUnityAdsInitializationListener {
+                        override fun onInitializationComplete() {
+                            loadAndShowUnityAdPlayback(activity, placementId, tournamentId, onAdShowResult)
+                        }
+                        override fun onInitializationFailed(error: UnityAds.UnityAdsInitializationError?, msg: String?) {
+                            activity.runOnUiThread {
+                                android.widget.Toast.makeText(activity, "Unity Ads Offline: $msg. Crediting custom sandbox reward.", android.widget.Toast.LENGTH_SHORT).show()
+                                simulateAdWatch(tournamentId)
+                                onAdShowResult(true)
+                            }
+                        }
+                    })
+                } else {
                     loadAndShowUnityAdPlayback(activity, placementId, tournamentId, onAdShowResult)
                 }
-                override fun onInitializationFailed(error: UnityAds.UnityAdsInitializationError?, msg: String?) {
-                    activity.runOnUiThread {
-                        android.widget.Toast.makeText(activity, "Unity Ads Offline: $msg. Crediting custom sandbox reward.", android.widget.Toast.LENGTH_SHORT).show()
-                        simulateAdWatch(tournamentId)
-                        onAdShowResult(true)
-                    }
-                }
-            })
-        } else {
-            loadAndShowUnityAdPlayback(activity, placementId, tournamentId, onAdShowResult)
+            } catch (e: Exception) {
+                Log.e("UnityAds", "Error launching Unity Ads: ${e.message}", e)
+                android.widget.Toast.makeText(activity, "Ads engine fallback triggered. Crediting sandbox reward.", android.widget.Toast.LENGTH_SHORT).show()
+                simulateAdWatch(tournamentId)
+                onAdShowResult(true)
+            }
         }
     }
 
@@ -392,43 +459,61 @@ class EsportsViewModel(
             android.widget.Toast.makeText(activity, "Loading Unity video ad, please wait...", android.widget.Toast.LENGTH_SHORT).show()
         }
 
-        UnityAds.load(placementId, object : IUnityAdsLoadListener {
-            override fun onUnityAdsAdLoaded(placement: String?) {
-                UnityAds.show(activity, placementId, UnityAdsShowOptions(), object : IUnityAdsShowListener {
-                    override fun onUnityAdsShowFailure(placement: String?, error: UnityAds.UnityAdsShowError?, message: String?) {
+        try {
+            UnityAds.load(placementId, object : IUnityAdsLoadListener {
+                override fun onUnityAdsAdLoaded(placement: String?) {
+                    try {
+                        UnityAds.show(activity, placementId, UnityAdsShowOptions(), object : IUnityAdsShowListener {
+                            override fun onUnityAdsShowFailure(placement: String?, error: UnityAds.UnityAdsShowError?, message: String?) {
+                                activity.runOnUiThread {
+                                    android.widget.Toast.makeText(activity, "Failed to present ad: $message. Fetching fallback reward...", android.widget.Toast.LENGTH_SHORT).show()
+                                    simulateAdWatch(tournamentId)
+                                    onAdShowResult(true)
+                                }
+                            }
+
+                            override fun onUnityAdsShowStart(placement: String?) {}
+                            override fun onUnityAdsShowClick(placement: String?) {}
+
+                            override fun onUnityAdsShowComplete(placement: String?, state: UnityAds.UnityAdsShowCompletionState?) {
+                                activity.runOnUiThread {
+                                    if (state == UnityAds.UnityAdsShowCompletionState.COMPLETED) {
+                                        android.widget.Toast.makeText(activity, "Rewarded Video Complete! Coins credited successfully.", android.widget.Toast.LENGTH_SHORT).show()
+                                        simulateAdWatch(tournamentId)
+                                        onAdShowResult(true)
+                                    } else {
+                                        android.widget.Toast.makeText(activity, "Ad video skipped before completion.", android.widget.Toast.LENGTH_SHORT).show()
+                                        onAdShowResult(false)
+                                    }
+                                }
+                            }
+                        })
+                    } catch (e: Exception) {
+                        Log.e("UnityAds", "Error showing Unity Ad: ${e.message}", e)
                         activity.runOnUiThread {
-                            android.widget.Toast.makeText(activity, "Failed to present ad: $message. Fetching fallback reward...", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(activity, "Ads presenter issue. Crediting fallback reward...", android.widget.Toast.LENGTH_SHORT).show()
                             simulateAdWatch(tournamentId)
                             onAdShowResult(true)
                         }
                     }
-
-                    override fun onUnityAdsShowStart(placement: String?) {}
-                    override fun onUnityAdsShowClick(placement: String?) {}
-
-                    override fun onUnityAdsShowComplete(placement: String?, state: UnityAds.UnityAdsShowCompletionState?) {
-                        activity.runOnUiThread {
-                            if (state == UnityAds.UnityAdsShowCompletionState.COMPLETED) {
-                                android.widget.Toast.makeText(activity, "Rewarded Video Complete! Coins credited successfully.", android.widget.Toast.LENGTH_SHORT).show()
-                                simulateAdWatch(tournamentId)
-                                onAdShowResult(true)
-                            } else {
-                                android.widget.Toast.makeText(activity, "Ad video skipped before completion.", android.widget.Toast.LENGTH_SHORT).show()
-                                onAdShowResult(false)
-                            }
-                        }
-                    }
-                })
-            }
-
-            override fun onUnityAdsFailedToLoad(placement: String?, error: UnityAds.UnityAdsLoadError?, message: String?) {
-                activity.runOnUiThread {
-                    android.widget.Toast.makeText(activity, "Ad load timeout: $message. Applied fallback reward credit successfully.", android.widget.Toast.LENGTH_LONG).show()
-                    simulateAdWatch(tournamentId)
-                    onAdShowResult(true)
                 }
+
+                override fun onUnityAdsFailedToLoad(placement: String?, error: UnityAds.UnityAdsLoadError?, message: String?) {
+                    activity.runOnUiThread {
+                        android.widget.Toast.makeText(activity, "Ad load timeout: $message. Applied fallback reward credit successfully.", android.widget.Toast.LENGTH_LONG).show()
+                        simulateAdWatch(tournamentId)
+                        onAdShowResult(true)
+                    }
+                }
+            })
+        } catch (e: Exception) {
+            Log.e("UnityAds", "Error loading Unity Ad: ${e.message}", e)
+            activity.runOnUiThread {
+                android.widget.Toast.makeText(activity, "Ads loader issue. Crediting fallback reward...", android.widget.Toast.LENGTH_SHORT).show()
+                simulateAdWatch(tournamentId)
+                onAdShowResult(true)
             }
-        })
+        }
     }
 
     // Unity Ads playback simulation with 120 secs local anti-ban cooldown counter
@@ -499,6 +584,12 @@ class EsportsViewModel(
             return
         }
         
+        // Check if user is already joined
+        if (user.joinedTournaments.contains(tournament.id)) {
+            onError("You have already joined this tournament!")
+            return
+        }
+
         if (tournament.slotsFilled >= tournament.totalSlots) {
             onError("Lobby is fully completed & full!")
             return
@@ -558,12 +649,16 @@ class EsportsViewModel(
                 mainWallet = updatedMain,
                 bonusWallet = updatedBonus,
                 winningWallet = updatedWinning,
-                matchesPlayed = user.matchesPlayed + 1
+                matchesPlayed = user.matchesPlayed + 1,
+                joinedTournaments = if (user.joinedTournaments.isBlank()) tournament.id else "${user.joinedTournaments},${tournament.id}"
             )
             syncManager.saveUserDirectly(updatedUser)
         } else {
             // Free tournament
-            val updatedUser = user.copy(matchesPlayed = user.matchesPlayed + 1)
+            val updatedUser = user.copy(
+                matchesPlayed = user.matchesPlayed + 1,
+                joinedTournaments = if (user.joinedTournaments.isBlank()) tournament.id else "${user.joinedTournaments},${tournament.id}"
+            )
             syncManager.saveUserDirectly(updatedUser)
         }
 
@@ -643,7 +738,7 @@ class EsportsViewModel(
     }
 
     // Deposit flow: credits user wallet directly in demo structure or registers a PENDING transaction
-    fun requestDeposit(amount: Double) {
+    fun requestDeposit(amount: Double, screenshotUrl: String, method: String, acntNumber: String, acntName: String) {
         val user = _currentUser.value ?: return
         val id = "dep_${UUID.randomUUID().toString().substring(0, 6)}"
         val newTx = TransactionRecordEntity(
@@ -654,7 +749,8 @@ class EsportsViewModel(
             coins = 0.0,
             status = "PENDING",
             timestamp = System.currentTimeMillis(),
-            details = "Request to deposit Rs.${amount} credits"
+            details = "Method: $method\nSender Name: $acntName\nSender Number: $acntNumber",
+            screenshotUrl = screenshotUrl
         )
         syncManager.saveTransactionDirectly(newTx)
         _depositRequestSuccess.value = "Deposit of Rs.${amount} is in queue! Admin will approve shortly."
@@ -712,8 +808,9 @@ class EsportsViewModel(
 
     fun requestWithdraw(amount: Double, details: String, onError: (String) -> Unit) {
         val user = _currentUser.value ?: return
-        if (amount <= 0.0) {
-            onError("Please specify a valid amount!")
+        val minimum = _minWithdraw.value.toDoubleOrNull() ?: 50.0
+        if (amount < minimum) {
+            onError("Minimum withdrawal amount is Rs.$minimum")
             return
         }
         if (user.winningWallet < amount) {
@@ -738,6 +835,27 @@ class EsportsViewModel(
         )
         syncManager.saveTransactionDirectly(tx)
         _depositRequestSuccess.value = "Withdraw request for Rs.${amount} placed successfully!"
+    }
+
+    fun submitDiamondRedemption(packTitle: String, coinCost: Int) {
+        val user = _currentUser.value ?: return
+        if (user.coins >= coinCost) {
+            val updatedUser = user.copy(coins = user.coins - coinCost)
+            syncManager.saveUserDirectly(updatedUser)
+
+            val tx = TransactionRecordEntity(
+                id = "diamond_${user.emailKey}_${UUID.randomUUID()}",
+                emailKey = user.emailKey,
+                type = "WITHDRAW",
+                amount = 0.0,
+                coins = -coinCost.toDouble(),
+                status = "PENDING",
+                timestamp = System.currentTimeMillis(),
+                details = "Free Fire Diamond Top-Up: $packTitle (Game UID: ${user.gameUid})",
+                screenshotUrl = ""
+            )
+            syncManager.saveTransactionDirectly(tx)
+        }
     }
 
     fun clearDepositStatusText() {
@@ -772,12 +890,17 @@ class EsportsViewModel(
         }
     }
 
-    fun adminSetUnitySettings(gameId: String, rewardedId: String, interstitialId: String) {
+    fun adminSetPlatformSettings(gameId: String, rewardedId: String, interstitialId: String, epNum: String, epName: String, jcNum: String, jcName: String, minW: String) {
         if (_currentUser.value?.isAdmin == true) {
             val settings = mapOf(
                 "unity_game_id" to gameId,
                 "unity_rewarded_id" to rewardedId,
-                "unity_interstitial_id" to interstitialId
+                "unity_interstitial_id" to interstitialId,
+                "ep_number" to epNum,
+                "ep_title" to epName,
+                "jc_number" to jcNum,
+                "jc_title" to jcName,
+                "min_withdraw" to minW
             )
             syncManager.settingsRef.setValue(settings)
         }

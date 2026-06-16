@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -854,6 +855,7 @@ fun HomeScreen(viewModel: EsportsViewModel, onNavigate: (String) -> Unit) {
             items(openMatches.take(3)) { match ->
                 TournamentCard(
                     tournament = match,
+                    user = user,
                     cooldown = 0,
                     onWatchAdClick = {},
                     onRegisterClick = { onNavigate("games") }
@@ -913,6 +915,7 @@ fun GamesScreen(viewModel: EsportsViewModel) {
     val context = LocalContext.current
     val tournaments by viewModel.tournaments.collectAsStateWithLifecycle()
     val cooldowns by viewModel.cooldowns.collectAsStateWithLifecycle()
+    val user by viewModel.currentUser.collectAsStateWithLifecycle()
     
     var gameFilter by remember { mutableStateOf("All") }
     var statusFilter by remember { mutableStateOf("All") }
@@ -1031,6 +1034,7 @@ fun GamesScreen(viewModel: EsportsViewModel) {
                 val remainingCd = cooldowns[match.id] ?: 0
                 TournamentCard(
                     tournament = match,
+                    user = user,
                     cooldown = remainingCd,
                     onWatchAdClick = {
                         if (remainingCd > 0) {
@@ -1183,6 +1187,7 @@ fun GamesScreen(viewModel: EsportsViewModel) {
 @Composable
 fun TournamentCard(
     tournament: TournamentEntity,
+    user: UserEntity?,
     cooldown: Int,
     onWatchAdClick: () -> Unit,
     onRegisterClick: () -> Unit
@@ -1196,6 +1201,8 @@ fun TournamentCard(
     val timeToMatch = tournament.scheduleTimeMillis - now
     val isScheduleUnlockReady = timeToMatch <= 600000 // Less than or equal to 10 minutes (600,000ms)
 
+    val isUserJoined = user != null && user.joinedTournaments.contains(tournament.id)
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -1207,18 +1214,42 @@ fun TournamentCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(90.dp)
-                    .background(
-                        brush = Brush.verticalGradient(
-                            listOf(NeonOrange.copy(alpha = 0.3f), CharcoalCard)
-                        )
-                    )
-                    .padding(14.dp)
+                    .height(110.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
+                if (tournament.bannerUrl.isNotBlank()) {
+                    coil.compose.AsyncImage(
+                        model = coil.request.ImageRequest.Builder(context)
+                            .data(tournament.bannerUrl)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = "Tournament Banner",
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    // Dim overlay
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, CharcoalCard.copy(alpha = 0.9f)),
+                                startY = 40f
+                            ))
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    listOf(NeonOrange.copy(alpha = 0.3f), CharcoalCard)
+                                )
+                            )
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(14.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     val badgeColor = when (tournament.status) {
                         "COMPLETED" -> Color.Gray
@@ -1227,33 +1258,32 @@ fun TournamentCard(
                         else -> MintGreen
                     }
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = badgeColor),
+                        colors = CardDefaults.cardColors(containerColor = badgeColor.copy(alpha = 0.8f)),
                         shape = RoundedCornerShape(4.dp)
                     ) {
                         Text(
                             text = tournament.status,
-                            color = CharcoalBg,
+                            color = Color.White,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
 
-                    Text(
-                        text = "Map: ${tournament.mapType}",
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            text = tournament.title,
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            text = "${tournament.gameType} Tournament • Map: ${tournament.mapType}",
+                            color = Color.LightGray,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
-
-                Text(
-                    text = tournament.title,
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    modifier = Modifier.align(Alignment.BottomStart)
-                )
             }
 
             // Stats row details
@@ -1315,13 +1345,40 @@ fun TournamentCard(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // Description
+                if (tournament.description.isNotBlank()) {
+                    Text(
+                        text = "Rules & Details: ${tournament.description}",
+                        color = GrayText,
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
+
                 // Register Actions row
                 if (tournament.status == "OPEN" || tournament.status == "UPCOMING") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    if (isUserJoined) {
+                        // Already joined message
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MintGreen.copy(alpha = 0.1f)),
+                            border = BorderStroke(1.dp, MintGreen.copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = "You have successfully registered for this tournament.",
+                                color = MintGreen,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                         // Anti-Ban Cooldown Button representation
                         if (tournament.adsRequired > 0) {
                             Button(
@@ -1373,17 +1430,18 @@ fun TournamentCard(
                                 .testTag("lobby_register_btn")
                         ) {
                             Text(
-                                text = "JOIN ROOM",
+                                text = "JOIN NOW",
                                 color = CharcoalBg,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp
                             )
                         }
                     }
-                }
+                } // closes else
+                } // closes if (tournament.status ...)
 
                 // Credentials unlock copy panel
-                if (tournament.status == "OPEN" || tournament.status == "LIVE") {
+                if ((tournament.status == "OPEN" || tournament.status == "LIVE") && isUserJoined) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -1510,8 +1568,41 @@ fun StoreScreen(viewModel: EsportsViewModel) {
     val userState by viewModel.currentUser.collectAsStateWithLifecycle()
     val user = userState ?: return
 
+    val epTitle by viewModel.epTitle.collectAsStateWithLifecycle()
+    val epNum by viewModel.epNumber.collectAsStateWithLifecycle()
+    val jcTitle by viewModel.jcTitle.collectAsStateWithLifecycle()
+    val jcNum by viewModel.jcNumber.collectAsStateWithLifecycle()
+    val minWithdraw by viewModel.minWithdraw.collectAsStateWithLifecycle()
+
     var showDepositDialog by remember { mutableStateOf(false) }
     var depositAmountText by remember { mutableStateOf("") }
+    var selectedMethod by remember { mutableStateOf("Easypaisa") }
+    var senderName by remember { mutableStateOf("") }
+    var senderPhone by remember { mutableStateOf("") }
+    var screenshotUrl by remember { mutableStateOf("") }
+    var uploadingScreenshot by remember { mutableStateOf(false) }
+
+    val screenshotPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            uploadingScreenshot = true
+            val tempFile = java.io.File(context.cacheDir, "deposit_proof.jpg")
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                tempFile.outputStream().use { out ->
+                    inputStream.copyTo(out)
+                }
+            }
+            viewModel.uploadImageToImgBB(tempFile, onSuccess = { url ->
+                screenshotUrl = url
+                uploadingScreenshot = false
+                Toast.makeText(context, "Screenshot uploaded!", Toast.LENGTH_SHORT).show()
+            }, onError = {
+                uploadingScreenshot = false
+                Toast.makeText(context, "Failed to upload screenshot.", Toast.LENGTH_SHORT).show()
+            })
+        }
+    }
 
     var showWithdrawDialog by remember { mutableStateOf(false) }
     var withdrawAmountText by remember { mutableStateOf("") }
@@ -1683,7 +1774,8 @@ fun StoreScreen(viewModel: EsportsViewModel) {
         Dialog(onDismissRequest = { showDepositDialog = false }) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = CharcoalCard),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState())
             ) {
                 Column(
                     modifier = Modifier.padding(24.dp),
@@ -1696,17 +1788,39 @@ fun StoreScreen(viewModel: EsportsViewModel) {
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(14.dp))
+                    
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        Button(
+                            onClick = { selectedMethod = "Easypaisa" },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (selectedMethod == "Easypaisa") MintGreen else Color.DarkGray)
+                        ) { Text("Easypaisa") }
+                        Button(
+                            onClick = { selectedMethod = "JazzCash" },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (selectedMethod == "JazzCash") MintGreen else Color.DarkGray)
+                        ) { Text("JazzCash") }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(14.dp))
+                    
+                    Card(colors = CardDefaults.cardColors(containerColor = CharcoalBg), modifier = Modifier.fillMaxWidth().padding(bottom=10.dp)) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("Send payment to:", color = GrayText, fontSize = 12.sp)
+                            Text(if (selectedMethod == "Easypaisa") epTitle else jcTitle, color = Color.White, fontWeight = FontWeight.Bold)
+                            Text(if (selectedMethod == "Easypaisa") epNum else jcNum, color = NeonGold, fontWeight = FontWeight.Bold)
+                        }
+                    }
 
-                    OutlinedTextField(
-                        value = depositAmountText,
-                        onValueChange = { depositAmountText = it },
-                        label = { Text("Amount (Rs.)") },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White, focusedBorderColor = NeonGold
-                        ),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true
-                    )
+                    OutlinedTextField(value = depositAmountText, onValueChange = { depositAmountText = it }, label = { Text("Amount (Rs.)") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, focusedBorderColor = NeonGold), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth().padding(bottom=6.dp))
+                    OutlinedTextField(value = senderName, onValueChange = { senderName = it }, label = { Text("Sender Name") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, focusedBorderColor = NeonGold), singleLine = true, modifier = Modifier.fillMaxWidth().padding(bottom=6.dp))
+                    OutlinedTextField(value = senderPhone, onValueChange = { senderPhone = it }, label = { Text("Sender Phone/Account") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, focusedBorderColor = NeonGold), singleLine = true, modifier = Modifier.fillMaxWidth().padding(bottom=12.dp))
+
+                    Button(
+                        onClick = { screenshotPickerLauncher.launch("image/*") },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (uploadingScreenshot) "UPLOADING..." else if (screenshotUrl.isNotEmpty()) "SCREENSHOT UPLOADED" else "UPLOAD SCREENSHOT", color = Color.White)
+                    }
 
                     Spacer(modifier = Modifier.height(20.dp))
 
@@ -1717,14 +1831,18 @@ fun StoreScreen(viewModel: EsportsViewModel) {
                         Button(
                             onClick = {
                                 val amt = depositAmountText.toDoubleOrNull() ?: 0.0
-                                if (amt > 0.0) {
-                                    viewModel.requestDeposit(amt)
+                                if (amt > 0.0 && senderName.isNotBlank() && senderPhone.isNotBlank() && screenshotUrl.isNotBlank()) {
+                                    viewModel.requestDeposit(amt, screenshotUrl, selectedMethod, senderPhone, senderName)
                                     showDepositDialog = false
                                     depositAmountText = ""
+                                    senderName = ""
+                                    senderPhone = ""
+                                    screenshotUrl = ""
                                 } else {
-                                    Toast.makeText(context, "Please enter valid amount", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Please fill all fields and upload screenshot", Toast.LENGTH_SHORT).show()
                                 }
                             },
+                            enabled = !uploadingScreenshot && screenshotUrl.isNotBlank() && depositAmountText.isNotBlank(),
                             colors = ButtonDefaults.buttonColors(containerColor = MintGreen)
                         ) {
                             Text("SUBMIT REQUEST")
@@ -1821,15 +1939,20 @@ data class VoucherPackage(
 // ============================================
 @Composable
 fun RewardsScreen(viewModel: EsportsViewModel) {
+    val context = LocalContext.current
+    val userState by viewModel.currentUser.collectAsStateWithLifecycle()
+    val user = userState ?: return
+    
     val dailyTasks by viewModel.dailyTasks.collectAsStateWithLifecycle()
     val taskProgress by viewModel.taskProgress.collectAsStateWithLifecycle()
     val claimedDays by viewModel.claimedDays.collectAsStateWithLifecycle()
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 14.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp)
+        ) {
         item {
             Text(
                 text = "Daily Rewards Arena",
@@ -1853,23 +1976,30 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
                     .padding(vertical = 4.dp)
             ) {
                 val rewardsList = listOf(5.0, 5.0, 5.0, 10.0, 5.0, 5.0, 15.0)
+                val now = System.currentTimeMillis()
+                var currentDay = if (now - (user?.lastDailyRewardTime ?: 0L) > (2 * 24 * 60 * 60 * 1000L)) 1 else (user?.dailyRewardDay ?: 1)
+                
                 for (day in 1..7) {
-                    val claimed = claimedDays.contains(day)
+                    val claimed = (day < currentDay) || (day == currentDay && now - (user?.lastDailyRewardTime ?: 0L) < (24 * 60 * 60 * 1000L))
+                    val isToday = day == currentDay
+                    val enabled = isToday && !claimed
                     
                     Card(
                         modifier = Modifier
                             .width(84.dp)
                             .padding(end = 8.dp)
-                            .clickable(enabled = !claimed) {
-                                viewModel.claimDayReward(day, rewardsList[day - 1])
+                            .clickable(enabled = enabled) {
+                                viewModel.claimDailyReward { error ->
+                                    Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                                }
                             },
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (claimed) MintGreen.copy(alpha = 0.2f) else CharcoalCard
+                            containerColor = if (claimed) MintGreen.copy(alpha = 0.2f) else if (isToday) NeonGold.copy(alpha=0.1f) else CharcoalCard
                         ),
                         border = BorderStroke(
                             1.dp,
-                            if (claimed) MintGreenBorder else NeonGold.copy(alpha = 0.2f)
+                            if (claimed) MintGreenBorder else if(isToday) NeonGold else Color.DarkGray
                         )
                     ) {
                         Column(
@@ -1923,98 +2053,105 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
         }
 
         item {
-            Text(
-                text = "Daily Battle Assignments",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 28.dp, bottom = 4.dp)
-            )
-            Text(
-                text = "Fulfill these requests inside gameplay matches to claim vouchers.",
-                color = GrayText,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-        }
-
-        if (dailyTasks.isEmpty()) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                    colors = CardDefaults.cardColors(containerColor = CharcoalCard)
-                ) {
-                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                        Text(text = "No active tasks synced at present.", color = GrayText, fontSize = 12.sp)
-                    }
-                }
-            }
-        } else {
-            items(dailyTasks) { task ->
-                val progressEntity = taskProgress.find { it.taskId == task.id || it.taskId == "task_${task.id.takeLast(4)}" }
-                val currentProgress = progressEntity?.currentValue ?: 0
-                val progressFraction = if (task.targetValue > 0) currentProgress.toFloat() / task.targetValue else 0f
-                val isClaimed = progressEntity?.claimed ?: false
-
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = CharcoalCard),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = task.title,
-                                    color = Color.White,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Reward: ${task.coinReward.toInt()} Coins",
-                                    color = NeonOrange,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = NeonGold.copy(alpha=0.15f)),
+                border = BorderStroke(1.dp, NeonGold),
+                modifier = Modifier.fillMaxWidth().clickable {
+                    val activity = context.findActivity()
+                    if (activity != null) {
+                        viewModel.showUnityRewardedAd(activity, "rewards_wallet_watch") { success ->
+                            if (success) {
+                                Toast.makeText(context, "You earned 10 Coins!", Toast.LENGTH_SHORT).show()
                             }
-                            Text(
-                                text = "$currentProgress/${task.targetValue}",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
                         }
+                    } else {
+                        Toast.makeText(context, "Failed to locate active rendering window context.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Watch Ads to Earn Coins", color = NeonGold, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("Watch short video clips to gather coins for Diamond redemption.", color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(top=4.dp))
+                    }
+                    Icon(
+                        imageVector = Icons.Default.PlayCircleOutline,
+                        contentDescription = "Watch AD",
+                        tint = NeonGold,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+        item {
+            val diamondPacks = listOf(
+                Pair("110 Diamonds", 100),
+                Pair("231 Diamonds", 200),
+                Pair("583 Diamonds", 500),
+                Pair("1188 Diamonds", 1000)
+            )
 
-                        // Custom Progress Bar Details
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .background(CharcoalBg, RoundedCornerShape(3.dp))
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .fillMaxWidth(progressFraction.coerceIn(0f, 1f))
-                                    .background(
-                                        brush = Brush.horizontalGradient(listOf(NeonOrange, NeonGold)),
-                                        shape = RoundedCornerShape(3.dp)
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                Text(
+                    text = "Free Fire Diamond Top-Up",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                )
+                Text(
+                    text = "Redeem your collected coins into Free Fire Diamonds direct to your Game UID.",
+                    color = GrayText,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                
+                // Using nested rows for grid to avoid scroll constraint conflicts
+                val chunkedPacks = diamondPacks.chunked(2)
+                for (rowPacks in chunkedPacks) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        for (pack in rowPacks) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f).clickable {
+                                    if (user.coins >= pack.second) {
+                                        Toast.makeText(context, "Redemption Request Submitted!", Toast.LENGTH_SHORT).show()
+                                        viewModel.submitDiamondRedemption(pack.first, pack.second)
+                                    } else {
+                                        Toast.makeText(context, "Not enough coins!", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Default.Diamond,
+                                        contentDescription = "Diamonds",
+                                        tint = NeonGold,
+                                        modifier = Modifier.size(40.dp).padding(bottom = 8.dp)
                                     )
-                            )
+                                    Text(text = pack.first, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(text = "${pack.second} Coins", color = NeonOrange, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                                }
+                            }
+                        }
+                        if (rowPacks.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
                         }
                     }
                 }
             }
         }
-    }
+    } // end LazyColumn
+    } // end Column wrapper
 }
 
 // ============================================
@@ -2028,6 +2165,7 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
 
     var editUsername by remember { mutableStateOf(false) }
     var renameInput by remember { mutableStateOf(user.name) }
+    var gameUidInput by remember { mutableStateOf(user.gameUid) }
 
     var redeemCode by remember { mutableStateOf("") }
 
@@ -2152,7 +2290,7 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
         Dialog(onDismissRequest = { editUsername = false }) {
             Card(colors = CardDefaults.cardColors(containerColor = CharcoalCard), shape = RoundedCornerShape(16.dp)) {
                 Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = "Change Handle Name", color = NeonGold, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "Edit Profile Details", color = NeonGold, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(14.dp))
                     OutlinedTextField(
                         value = renameInput,
@@ -2162,6 +2300,30 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
                             focusedTextColor = Color.White, focusedBorderColor = NeonGold
                         )
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    val now = System.currentTimeMillis()
+                    val cooldownMillis = 30L * 24L * 60L * 60L * 1000L // 30 days
+                    val canChangeUid = (now - user.lastGameUidChangeTime) > cooldownMillis
+                    OutlinedTextField(
+                        value = gameUidInput,
+                        onValueChange = { gameUidInput = it },
+                        label = { Text("Game UID") },
+                        enabled = canChangeUid,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White, focusedBorderColor = NeonGold
+                        ),
+                        placeholder = { Text("Enter Free Fire UID") }
+                    )
+                    if (!canChangeUid) {
+                        Text(
+                            text = "Game UID can only be changed once every 30 days.",
+                            color = Color.Red,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(20.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         TextButton(onClick = { editUsername = false }) {
@@ -2170,17 +2332,14 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
                         Button(
                             onClick = {
                                 if (renameInput.isNotBlank()) {
-                                    val updated = user.copy(name = renameInput.trim())
-                                    viewModel.adminAdjustUserWallets(
-                                        user.emailKey,
-                                        user.mainWallet,
-                                        user.bonusWallet,
-                                        user.winningWallet,
-                                        user.coins
-                                    )
-                                    // Direct trigger update in RTDB
-                                    FirebaseDatabase.getInstance().getReference("users")
-                                        .child(user.emailKey).child("name").setValue(renameInput.trim())
+                                    val dbRef = FirebaseDatabase.getInstance().getReference("users").child(user.emailKey)
+                                    dbRef.child("name").setValue(renameInput.trim())
+                                    
+                                    if (canChangeUid && gameUidInput.trim() != user.gameUid) {
+                                        dbRef.child("gameUid").setValue(gameUidInput.trim())
+                                        dbRef.child("lastGameUidChangeTime").setValue(System.currentTimeMillis())
+                                    }
+                                    
                                     editUsername = false
                                 }
                             },
@@ -2477,6 +2636,7 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
     var roomId by remember { mutableStateOf("") }
     var roomPassword by remember { mutableStateOf("") }
     var bannerUrl by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
     var uploadingImage by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -2524,6 +2684,7 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                 roomId = ""
                 roomPassword = ""
                 bannerUrl = ""
+                description = ""
                 showDialog = true
             },
             colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
@@ -2563,6 +2724,7 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                                     roomId = t.roomId
                                     roomPassword = t.roomPassword
                                     bannerUrl = t.bannerUrl
+                                    description = t.description
                                     showDialog = true
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
@@ -2619,6 +2781,17 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                         label = { Text("Match Title") },
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
                         modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        label = { Text("Rules & Description") },
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 5
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -2737,7 +2910,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                                         status = original?.status ?: "OPEN",
                                         roomId = roomId,
                                         roomPassword = roomPassword,
-                                        bannerUrl = bannerUrl
+                                        bannerUrl = bannerUrl,
+                                        description = description
                                     )
                                     viewModel.adminCreateTournament(entity)
                                     Toast.makeText(context, "Tournament saved!", Toast.LENGTH_SHORT).show()
@@ -2948,20 +3122,35 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
     val gameId by viewModel.unityGameId.collectAsStateWithLifecycle()
     val rewardedId by viewModel.unityRewardedId.collectAsStateWithLifecycle()
     val interstitialId by viewModel.unityInterstitialId.collectAsStateWithLifecycle()
+    val epTitle by viewModel.epTitle.collectAsStateWithLifecycle()
+    val epNum by viewModel.epNumber.collectAsStateWithLifecycle()
+    val jcTitle by viewModel.jcTitle.collectAsStateWithLifecycle()
+    val jcNum by viewModel.jcNumber.collectAsStateWithLifecycle()
+    val minWithdraw by viewModel.minWithdraw.collectAsStateWithLifecycle()
 
     var inputGameId by remember { mutableStateOf(gameId) }
     var inputRewardedId by remember { mutableStateOf(rewardedId) }
     var inputInterstitialId by remember { mutableStateOf(interstitialId) }
+    var inputEpTitle by remember { mutableStateOf(epTitle) }
+    var inputEpNum by remember { mutableStateOf(epNum) }
+    var inputJcTitle by remember { mutableStateOf(jcTitle) }
+    var inputJcNum by remember { mutableStateOf(jcNum) }
+    var inputMinWithdraw by remember { mutableStateOf(minWithdraw) }
 
-    LaunchedEffect(gameId, rewardedId, interstitialId) {
+    LaunchedEffect(gameId, rewardedId, interstitialId, epTitle, epNum, jcTitle, jcNum, minWithdraw) {
         inputGameId = gameId
         inputRewardedId = rewardedId
         inputInterstitialId = interstitialId
+        inputEpTitle = epTitle
+        inputEpNum = epNum
+        inputJcTitle = jcTitle
+        inputJcNum = jcNum
+        inputMinWithdraw = minWithdraw
     }
 
     val context = LocalContext.current
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Text(text = "Manage Unity Ads Placer Settings", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(14.dp))
 
@@ -2972,11 +3161,25 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
         OutlinedTextField(value = inputInterstitialId, onValueChange = { inputInterstitialId = it }, label = { Text("Interstitial Placement ID") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth())
 
         Spacer(modifier = Modifier.height(24.dp))
+        Text(text = "Payment Administration", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(14.dp))
+
+        OutlinedTextField(value = inputEpTitle, onValueChange = { inputEpTitle = it }, label = { Text("Easypaisa Account Title") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(value = inputEpNum, onValueChange = { inputEpNum = it }, label = { Text("Easypaisa Account Number") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(value = inputJcTitle, onValueChange = { inputJcTitle = it }, label = { Text("JazzCash Account Title") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(value = inputJcNum, onValueChange = { inputJcNum = it }, label = { Text("JazzCash Account Number") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(value = inputMinWithdraw, onValueChange = { inputMinWithdraw = it }, label = { Text("Minimum Withdrawal Amount") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth())
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = {
-                viewModel.adminSetUnitySettings(inputGameId, inputRewardedId, inputInterstitialId)
-                Toast.makeText(context, "Unity Settings Updated successfully on Firebase RTDB!", Toast.LENGTH_SHORT).show()
+                viewModel.adminSetPlatformSettings(inputGameId, inputRewardedId, inputInterstitialId, inputEpNum, inputEpTitle, inputJcNum, inputJcTitle, inputMinWithdraw)
+                Toast.makeText(context, "Settings Updated successfully!", Toast.LENGTH_SHORT).show()
             },
             colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
             modifier = Modifier.fillMaxWidth()
@@ -3038,6 +3241,21 @@ fun AdminTransactionsQueueTab(viewModel: EsportsViewModel) {
                             }
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(text = "Details: ${tx.details}", color = GrayText, fontSize = 11.sp)
+                            
+                            if (tx.screenshotUrl.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text("Payment Proof Screenshot (Deposit):", color = NeonGold, fontSize = 11.sp)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                coil.compose.AsyncImage(
+                                    model = tx.screenshotUrl,
+                                    contentDescription = "Deposit Screenshot",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
                             
                             Spacer(modifier = Modifier.height(14.dp))
 

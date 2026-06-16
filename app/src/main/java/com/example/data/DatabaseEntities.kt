@@ -19,7 +19,11 @@ data class UserEntity(
     val password: String = "",
     val gameUid: String = "",
     val referCode: String = "",
-    val inboxMessage: String = ""
+    val inboxMessage: String = "",
+    val lastGameUidChangeTime: Long = 0L,
+    val joinedTournaments: String = "",
+    val dailyRewardDay: Int = 1,
+    val lastDailyRewardTime: Long = 0L
 )
 
 @Entity(tableName = "tournaments")
@@ -37,7 +41,8 @@ data class TournamentEntity(
     val status: String, // "OPEN", "UPCOMING", "LIVE", "COMPLETED"
     val roomId: String = "",
     val roomPassword: String = "",
-    val bannerUrl: String = ""
+    val bannerUrl: String = "",
+    val description: String = ""
 )
 
 @Entity(tableName = "promo_sliders")
@@ -76,7 +81,8 @@ data class TransactionRecordEntity(
     val coins: Double = 0.0,
     val status: String, // "PENDING", "APPROVED", "REJECTED", "SUCCESS"
     val timestamp: Long,
-    val details: String = ""
+    val details: String = "",
+    val screenshotUrl: String = ""
 )
 
 @Dao
