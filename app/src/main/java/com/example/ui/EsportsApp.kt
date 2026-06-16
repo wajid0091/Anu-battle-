@@ -241,8 +241,8 @@ fun HeaderBox(
                     )
                     Text(
                         text = "UID: ${if (user.gameUid.isNotBlank()) user.gameUid else user.emailKey.take(8)}",
-                        color = GrayText,
-                        fontSize = 10.sp,
+                        color = Color.Gray,
+                        fontSize = 8.sp,
                         fontFamily = FontFamily.Monospace
                     )
                 }
@@ -684,6 +684,8 @@ fun HomeScreen(viewModel: EsportsViewModel, onNavigate: (String) -> Unit) {
     
     val openMatches = tournaments.filter { it.status == "OPEN" }
     
+    val promos by viewModel.promoSliders.collectAsStateWithLifecycle(initialValue = emptyList())
+    
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -691,53 +693,88 @@ fun HomeScreen(viewModel: EsportsViewModel, onNavigate: (String) -> Unit) {
     ) {
         // Broadcast Banners Layout
         item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(140.dp)
-                    .padding(vertical = 4.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = CharcoalCard)
-            ) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // Dark glowing gradient background decoration
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                brush = Brush.linearGradient(
-                                    listOf(CharcoalCard, NeonOrange.copy(alpha = 0.15f))
-                                )
-                            )
-                    )
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.Center
+            if (promos.isNotEmpty()) {
+                val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { promos.size })
+                androidx.compose.foundation.pager.HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxWidth().height(140.dp).padding(vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 0.dp)
+                ) { page ->
+                    val promo = promos[page]
+                    Card(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp).clickable {
+                            if (promo.actionUrl.isNotBlank()) {
+                                try {
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(promo.actionUrl))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Invalid link", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = CharcoalCard)
                     ) {
-                        Text(
-                            text = "OFFICIAL BANNER",
-                            color = NeonOrange,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
+                        coil.compose.AsyncImage(
+                            model = coil.request.ImageRequest.Builder(context)
+                                .data(promo.imageUrl)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = promo.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Anu Battle Tournament Series Launch!",
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold
+                    }
+                }
+            } else {
+                // Fallback Banner
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
+                        .padding(vertical = 4.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = CharcoalCard)
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    brush = Brush.linearGradient(
+                                        listOf(CharcoalCard, NeonOrange.copy(alpha = 0.15f))
+                                    )
+                                )
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Watch daily rewarded videos, gather coin multipliers, and claim free entries into Premium Battle Royales.",
-                            color = GrayText,
-                            fontSize = 11.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "OFFICIAL BANNER",
+                                color = NeonOrange,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Anu Battle Tournament Series Launch!",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Watch daily rewarded videos, gather coin multipliers, and claim free entries into Premium Battle Royales.",
+                                color = GrayText,
+                                fontSize = 11.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
@@ -2213,7 +2250,7 @@ fun ProfileTile(
 @Composable
 fun AdminDashboardScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
     var adminTab by remember { mutableStateOf("Users") }
-    val adminTabs = listOf("Users", "Add Tourney", "Task CRUD", "Settings", "Deposit/Withdraw Queue")
+    val adminTabs = listOf("Users", "Add Tourney", "Task CRUD", "Settings", "Deposit/Withdraw Queue", "Promos")
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -2280,6 +2317,7 @@ fun AdminDashboardScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
                 "Task CRUD" -> AdminTaskCRUDTab(viewModel)
                 "Settings" -> AdminSettingsTab(viewModel)
                 "Deposit/Withdraw Queue" -> AdminTransactionsQueueTab(viewModel)
+                "Promos" -> AdminPromosTab(viewModel)
             }
         }
     }
@@ -2426,272 +2464,290 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
 fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
     val tournaments by viewModel.tournaments.collectAsStateWithLifecycle()
     
+    var showDialog by remember { mutableStateOf(false) }
     var editingTournamentId by remember { mutableStateOf<String?>(null) }
     
     var title by remember { mutableStateOf("") }
-    var gameType by remember { mutableStateOf("BGMI") }
-    var mapType by remember { mutableStateOf("Sanhok") }
+    var isFree by remember { mutableStateOf(false) }
+    var mapType by remember { mutableStateOf("Bermuda") }
     var entryFee by remember { mutableStateOf("") }
     var prizePool by remember { mutableStateOf("") }
     var totalSlots by remember { mutableStateOf("100") }
-    var adsRequired by remember { mutableStateOf("0") }
+    var adsRequired by remember { mutableStateOf("3") }
     var roomId by remember { mutableStateOf("") }
     var roomPassword by remember { mutableStateOf("") }
+    var bannerUrl by remember { mutableStateOf("") }
+    var uploadingImage by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+
+    val imagePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            uploadingImage = true
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val tempFile = java.io.File.createTempFile("promo_", ".jpg", context.cacheDir)
+                tempFile.outputStream().use { out ->
+                    inputStream?.copyTo(out)
+                }
+                viewModel.uploadImageToImgBB(tempFile, onSuccess = { url ->
+                    bannerUrl = url
+                    uploadingImage = false
+                    Toast.makeText(context, "Image uploaded!", Toast.LENGTH_SHORT).show()
+                }, onError = {
+                    uploadingImage = false
+                    Toast.makeText(context, "Failed to upload image.", Toast.LENGTH_SHORT).show()
+                })
+            } catch (e: Exception) {
+                uploadingImage = false
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
     ) {
-        Card(
-            colors = CardDefaults.cardColors(containerColor = CharcoalCard),
-            modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
-            shape = RoundedCornerShape(16.dp)
+        Button(
+            onClick = {
+                editingTournamentId = null
+                title = ""
+                isFree = false
+                mapType = "Bermuda"
+                entryFee = ""
+                prizePool = ""
+                totalSlots = "100"
+                adsRequired = "3"
+                roomId = ""
+                roomPassword = ""
+                bannerUrl = ""
+                showDialog = true
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
         ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Text(
-                    text = if (editingTournamentId == null) "Create Playroom Lobby" else "Edit Tournament Match",
-                    color = NeonGold,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(12.dp))
+            Text("ADD NEW TOURNAMENT", color = Color.White, fontWeight = FontWeight.Bold)
+        }
 
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Match Title") },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                OutlinedTextField(
-                    value = gameType,
-                    onValueChange = { gameType = it },
-                    label = { Text("Game Name (BGMI / Free Fire)") },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                OutlinedTextField(
-                    value = mapType,
-                    onValueChange = { mapType = it },
-                    label = { Text("Map Location (e.g. Bermuda)") },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                OutlinedTextField(
-                    value = entryFee,
-                    onValueChange = { entryFee = it },
-                    label = { Text("Entry Fee (Rs.)") },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                OutlinedTextField(
-                    value = prizePool,
-                    onValueChange = { prizePool = it },
-                    label = { Text("Prize Pool (Rs.)") },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                OutlinedTextField(
-                    value = totalSlots,
-                    onValueChange = { totalSlots = it },
-                    label = { Text("Total Slots Layout") },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                OutlinedTextField(
-                    value = adsRequired,
-                    onValueChange = { adsRequired = it },
-                    label = { Text("Ads Required Watch Target") },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                OutlinedTextField(
-                    value = roomId,
-                    onValueChange = { roomId = it },
-                    label = { Text("Lobby Pass ID") },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                OutlinedTextField(
-                    value = roomPassword,
-                    onValueChange = { roomPassword = it },
-                    label = { Text("Lobby Pass Secret") },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                    modifier = Modifier.fillMaxWidth()
-                )
+        Text(text = "Existing Playrooms List", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                if (editingTournamentId == null) {
-                    Button(
-                        onClick = {
-                            if (title.isBlank() || entryFee.isBlank() || prizePool.isBlank()) {
-                                Toast.makeText(context, "Please configure critical fields!", Toast.LENGTH_SHORT).show()
-                            } else {
-                                val entity = TournamentEntity(
-                                    id = "match_${System.currentTimeMillis().toString().takeLast(6)}",
-                                    title = title,
-                                    gameType = gameType,
-                                    mapType = mapType,
-                                    entryFee = entryFee.toDoubleOrNull() ?: 0.0,
-                                    prizePool = prizePool.toDoubleOrNull() ?: 0.0,
-                                    slotsFilled = 0,
-                                    totalSlots = totalSlots.toIntOrNull() ?: 100,
-                                    adsRequired = adsRequired.toIntOrNull() ?: 0,
-                                    scheduleTimeMillis = System.currentTimeMillis() + 1800000,
-                                    status = "OPEN",
-                                    roomId = roomId,
-                                    roomPassword = roomPassword
-                                )
-                                viewModel.adminCreateTournament(entity)
-                                Toast.makeText(context, "Tournament Lobby Created Perfectly!", Toast.LENGTH_LONG).show()
-                                
-                                title = ""
-                                entryFee = ""
-                                prizePool = ""
-                                roomId = ""
-                                roomPassword = ""
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MintGreen),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(text = "CREATE TOURNAMENT", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                if (title.isBlank() || entryFee.isBlank() || prizePool.isBlank()) {
-                                    Toast.makeText(context, "Critical fields are missing!", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    val original = tournaments.find { it.id == editingTournamentId }
-                                    val entity = TournamentEntity(
-                                        id = editingTournamentId!!,
-                                        title = title,
-                                        gameType = gameType,
-                                        mapType = mapType,
-                                        entryFee = entryFee.toDoubleOrNull() ?: 0.0,
-                                        prizePool = prizePool.toDoubleOrNull() ?: 0.0,
-                                        slotsFilled = original?.slotsFilled ?: 0,
-                                        totalSlots = totalSlots.toIntOrNull() ?: (original?.totalSlots ?: 100),
-                                        adsRequired = adsRequired.toIntOrNull() ?: (original?.adsRequired ?: 0),
-                                        scheduleTimeMillis = original?.scheduleTimeMillis ?: (System.currentTimeMillis() + 1800000),
-                                        status = original?.status ?: "OPEN",
-                                        roomId = roomId,
-                                        roomPassword = roomPassword
-                                    )
-                                    viewModel.adminCreateTournament(entity)
-                                    Toast.makeText(context, "Lobby Modified Successfully!", Toast.LENGTH_SHORT).show()
-                                    
-                                    editingTournamentId = null
-                                    title = ""
-                                    entryFee = ""
-                                    prizePool = ""
-                                    roomId = ""
-                                    roomPassword = ""
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(text = "SAVE CHANGES", color = CharcoalBg, fontWeight = FontWeight.Bold)
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            items(tournaments) { t ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    colors = CardDefaults.cardColors(containerColor = CharcoalCard)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Text(text = t.title, color = NeonGold, fontWeight = FontWeight.Bold)
+                            Text(text = if(t.entryFee > 0) "Fee: Rs.${t.entryFee}" else "FREE", color = Color.LightGray, fontSize = 12.sp)
                         }
+                        Text(text = "Type: Free Fire | Map: ${t.mapType}", color = Color.Gray, fontSize = 12.sp)
+                        Text(text = "Status: ${t.status} | Joined: ${t.slotsFilled}/${t.totalSlots}", color = GrayText, fontSize = 12.sp)
 
-                        Button(
-                            onClick = {
-                                editingTournamentId = null
-                                title = ""
-                                entryFee = ""
-                                prizePool = ""
-                                roomId = ""
-                                roomPassword = ""
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(text = "CANCEL", color = Color.White, fontWeight = FontWeight.Bold)
+                        Row(modifier = Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    editingTournamentId = t.id
+                                    title = t.title
+                                    isFree = t.entryFee == 0.0
+                                    mapType = t.mapType
+                                    entryFee = t.entryFee.toString()
+                                    prizePool = t.prizePool.toString()
+                                    totalSlots = t.totalSlots.toString()
+                                    adsRequired = t.adsRequired.toString()
+                                    roomId = t.roomId
+                                    roomPassword = t.roomPassword
+                                    bannerUrl = t.bannerUrl
+                                    showDialog = true
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
+                                modifier = Modifier.weight(1f).height(35.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text("EDIT", color = Color.White, fontSize = 11.sp)
+                            }
+                            Button(
+                                onClick = { viewModel.adminDeleteTournament(t.id) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.7f)),
+                                modifier = Modifier.weight(1f).height(35.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text("DELETE", color = Color.White, fontSize = 11.sp)
+                            }
                         }
                     }
                 }
             }
         }
+    }
 
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(text = "Existing Playrooms List", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
+    if (showDialog) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showDialog = false }) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = CharcoalBg),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 600.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
+                    Text(
+                        text = if (editingTournamentId == null) "Create Playroom Lobby" else "Edit Tournament Match",
+                        color = NeonGold,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
 
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            items(tournaments) { tourney ->
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = CharcoalCard),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Text("Note: Banner image should be 1200x500 for best display.", color = Color.Gray, fontSize = 10.sp)
+                    Button(
+                        onClick = { imagePickerLauncher.launch("image/*") },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = tourney.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Text(
-                                text = "ID: ${tourney.id} | Game: ${tourney.gameType} | Fee: Rs.${tourney.entryFee} | Prize: Rs.${tourney.prizePool}",
-                                color = GrayText,
-                                fontSize = 11.sp
-                            )
-                        }
+                        Text(if (uploadingImage) "Uploading..." else if (bannerUrl.isNotEmpty()) "Change Banner Image" else "Upload Banner Image", color = Color.White)
+                    }
 
-                        Row {
-                            IconButton(
-                                onClick = {
-                                    editingTournamentId = tourney.id
-                                    title = tourney.title
-                                    gameType = tourney.gameType
-                                    mapType = tourney.mapType
-                                    entryFee = tourney.entryFee.toString()
-                                    prizePool = tourney.prizePool.toString()
-                                    totalSlots = tourney.totalSlots.toString()
-                                    adsRequired = tourney.adsRequired.toString()
-                                    roomId = tourney.roomId
-                                    roomPassword = tourney.roomPassword
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text("Match Title") },
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(
+                            checked = isFree,
+                            onCheckedChange = { isFree = it },
+                            colors = androidx.compose.material3.CheckboxDefaults.colors(checkedColor = NeonGold)
+                        )
+                        Text("Is this a Free Tournament?", color = Color.White)
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = mapType,
+                        onValueChange = { mapType = it },
+                        label = { Text("Map Location (e.g. Bermuda)") },
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (!isFree) {
+                        OutlinedTextField(
+                            value = entryFee,
+                            onValueChange = { entryFee = it },
+                            label = { Text("Entry Fee (Rs.)") },
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        OutlinedTextField(
+                            value = prizePool,
+                            onValueChange = { prizePool = it },
+                            label = { Text("Prize Pool (Rs.)") },
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        OutlinedTextField(
+                            value = adsRequired,
+                            onValueChange = { adsRequired = it },
+                            label = { Text("Ads Required Watch Target") },
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    OutlinedTextField(
+                        value = totalSlots,
+                        onValueChange = { totalSlots = it },
+                        label = { Text("Total Slots") },
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    OutlinedTextField(
+                        value = roomId,
+                        onValueChange = { roomId = it },
+                        label = { Text("Lobby Pass ID (Will unlock 10 mins before)") },
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    OutlinedTextField(
+                        value = roomPassword,
+                        onValueChange = { roomPassword = it },
+                        label = { Text("Lobby Pass Secret") },
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { showDialog = false },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("CANCEL", color = Color.White)
+                        }
+                        Button(
+                            onClick = {
+                                if (title.isBlank()) {
+                                    Toast.makeText(context, "Title is required!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    val finalEntryFee = if (isFree) 0.0 else (entryFee.toDoubleOrNull() ?: 0.0)
+                                    val finalPrizePool = if (isFree) 0.0 else (prizePool.toDoubleOrNull() ?: 0.0)
+                                    val finalAdsRequired = if (isFree) (adsRequired.toIntOrNull() ?: 3) else 0
+
+                                    val original = tournaments.find { it.id == editingTournamentId }
+                                    val entity = TournamentEntity(
+                                        id = editingTournamentId ?: "match_${System.currentTimeMillis().toString().takeLast(6)}",
+                                        title = title,
+                                        gameType = "Free Fire",
+                                        mapType = mapType,
+                                        entryFee = finalEntryFee,
+                                        prizePool = finalPrizePool,
+                                        slotsFilled = original?.slotsFilled ?: 0,
+                                        totalSlots = totalSlots.toIntOrNull() ?: 100,
+                                        adsRequired = finalAdsRequired,
+                                        scheduleTimeMillis = original?.scheduleTimeMillis ?: (System.currentTimeMillis() + 1800000), // Note: Hardcoded time logic requires a datetime picker in real app
+                                        status = original?.status ?: "OPEN",
+                                        roomId = roomId,
+                                        roomPassword = roomPassword,
+                                        bannerUrl = bannerUrl
+                                    )
+                                    viewModel.adminCreateTournament(entity)
+                                    Toast.makeText(context, "Tournament saved!", Toast.LENGTH_SHORT).show()
+                                    showDialog = false
                                 }
-                            ) {
-                                Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit", tint = NeonGold)
-                            }
-                            IconButton(
-                                onClick = { viewModel.adminDeleteTournament(tourney.id) }
-                            ) {
-                                Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
-                            }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("SAVE", color = CharcoalBg, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -3006,6 +3062,128 @@ fun AdminTransactionsQueueTab(viewModel: EsportsViewModel) {
                                     Text(text = "APPROVE", color = Color.White)
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AdminPromosTab(viewModel: EsportsViewModel) {
+    val promos by viewModel.promoSliders.collectAsStateWithLifecycle(initialValue = emptyList())
+    var promoTitle by remember { mutableStateOf("") }
+    var actionUrl by remember { mutableStateOf("") }
+    var imageUrl by remember { mutableStateOf("") }
+    var uploadingImage by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val imagePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            uploadingImage = true
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val tempFile = java.io.File.createTempFile("promo_", ".jpg", context.cacheDir)
+                tempFile.outputStream().use { out ->
+                    inputStream?.copyTo(out)
+                }
+                viewModel.uploadImageToImgBB(tempFile, onSuccess = { url ->
+                    imageUrl = url
+                    uploadingImage = false
+                    Toast.makeText(context, "Image uploaded!", Toast.LENGTH_SHORT).show()
+                }, onError = {
+                    uploadingImage = false
+                    Toast.makeText(context, "Failed to upload image.", Toast.LENGTH_SHORT).show()
+                })
+            } catch (e: Exception) {
+                uploadingImage = false
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Text("Add Promo Image", color = NeonGold, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = promoTitle,
+            onValueChange = { promoTitle = it },
+            label = { Text("Promo Title") },
+            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = actionUrl,
+            onValueChange = { actionUrl = it },
+            label = { Text("Action URL (Optional link)") },
+            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Button(
+            onClick = { imagePickerLauncher.launch("image/*") },
+            colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (uploadingImage) "Uploading..." else if (imageUrl.isNotEmpty()) "Change Image" else "Upload Promo Image", color = Color.White)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(text = "Selected image URL: $imageUrl", color = Color.Gray, fontSize = 10.sp)
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = {
+                if (imageUrl.isBlank()) {
+                    Toast.makeText(context, "Please upload an image first!", Toast.LENGTH_SHORT).show()
+                } else {
+                    val id = "promo_${System.currentTimeMillis()}"
+                    val entity = com.example.data.PromoSliderEntity(
+                        id = id,
+                        imageUrl = imageUrl,
+                        title = promoTitle.ifBlank { "Promo" },
+                        actionUrl = actionUrl
+                    )
+                    viewModel.savePromoSlider(entity)
+                    Toast.makeText(context, "Promo added successfully!", Toast.LENGTH_SHORT).show()
+                    promoTitle = ""
+                    actionUrl = ""
+                    imageUrl = ""
+                }
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = MintGreen),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("SAVE PROMO", color = Color.White, fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        Text("Active Promos", color = Color.White, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+            items(promos) { p ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    colors = CardDefaults.cardColors(containerColor = CharcoalCard)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(p.title, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                        IconButton(onClick = { viewModel.deletePromoSlider(p.id) }) {
+                            Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete Promo", tint = Color.Red)
                         }
                     }
                 }

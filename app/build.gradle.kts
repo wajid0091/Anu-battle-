@@ -94,7 +94,7 @@ dependencies {
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
   implementation("com.unity3d.ads:unity-ads:4.11.3")
-  // implementation(libs.coil.compose)
+  implementation("io.coil-kt:coil-compose:2.6.0")
   implementation(libs.converter.moshi)
   // implementation(libs.firebase.ai)
   implementation(libs.kotlinx.coroutines.android)

@@ -17,12 +17,14 @@ class FirebaseSyncManager(
     private val tournamentsRef = database.getReference("tournaments")
     private val tasksRef = database.getReference("daily_task_templates")
     private val transactionsRef = database.getReference("transactions")
+    private val promosRef = database.getReference("promo_sliders")
     val settingsRef = database.getReference("settings")
     
     private var activeUsersListener: ValueEventListener? = null
     private var tournamentsListener: ValueEventListener? = null
     private var tasksListener: ValueEventListener? = null
     private var transactionsListener: ValueEventListener? = null
+    private var promosListener: ValueEventListener? = null
     private var progressListener: ValueEventListener? = null
 
     init {
@@ -129,6 +131,21 @@ class FirebaseSyncManager(
             }
             override fun onCancelled(error: DatabaseError) {}
         })
+
+        promosListener = promosRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<PromoSliderEntity>()
+                for (child in snapshot.children) {
+                    val p = child.toPromoSliderEntity()
+                    if (p != null) list.add(p)
+                }
+                scope.launch(Dispatchers.IO) {
+                    dao.clearPromoSliders()
+                    dao.insertPromoSliders(list)
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
     }
 
     private fun seedDefaultsIfEmpty() {
@@ -219,6 +236,14 @@ class FirebaseSyncManager(
     fun saveTransactionDirectly(tx: TransactionRecordEntity) {
         transactionsRef.child(tx.id).setValue(tx)
     }
+
+    fun savePromoSliderDirectly(promo: PromoSliderEntity) {
+        promosRef.child(promo.id).setValue(promo)
+    }
+
+    fun deletePromoSliderDirectly(id: String) {
+        promosRef.child(id).removeValue()
+    }
 }
 
 private fun DataSnapshot.toUserEntity(): UserEntity? {
@@ -237,7 +262,8 @@ private fun DataSnapshot.toUserEntity(): UserEntity? {
         val password = child("password").getValue(String::class.java) ?: ""
         val gameUid = child("gameUid").getValue(String::class.java) ?: ""
         val referCode = child("referCode").getValue(String::class.java) ?: ""
-        UserEntity(emailKey, name, email, mainWallet, bonusWallet, winningWallet, coins, matchesPlayed, matchesWon, banned, isAdmin, password, gameUid, referCode)
+        val inboxMessage = child("inboxMessage").getValue(String::class.java) ?: ""
+        UserEntity(emailKey, name, email, mainWallet, bonusWallet, winningWallet, coins, matchesPlayed, matchesWon, banned, isAdmin, password, gameUid, referCode, inboxMessage)
     } catch (e: Exception) {
         null
     }
@@ -258,7 +284,8 @@ private fun DataSnapshot.toTournamentEntity(): TournamentEntity? {
         val status = child("status").getValue(String::class.java) ?: "OPEN"
         val roomId = child("roomId").getValue(String::class.java) ?: ""
         val roomPassword = child("roomPassword").getValue(String::class.java) ?: ""
-        TournamentEntity(id, title, gameType, mapType, entryFee, prizePool, slotsFilled, totalSlots, adsRequired, scheduleTimeMillis, status, roomId, roomPassword)
+        val bannerUrl = child("bannerUrl").getValue(String::class.java) ?: ""
+        TournamentEntity(id, title, gameType, mapType, entryFee, prizePool, slotsFilled, totalSlots, adsRequired, scheduleTimeMillis, status, roomId, roomPassword, bannerUrl)
     } catch (e: Exception) {
         null
     }
@@ -288,6 +315,19 @@ private fun DataSnapshot.toTransactionRecordEntity(): TransactionRecordEntity? {
         val timestamp = child("timestamp").getValue(Long::class.java) ?: 0L
         val details = child("details").getValue(String::class.java) ?: ""
         TransactionRecordEntity(id, emailKey, type, amount, coins, status, timestamp, details)
+    } catch (e: Exception) {
+        null
+    }
+}
+
+private fun DataSnapshot.toPromoSliderEntity(): PromoSliderEntity? {
+    return try {
+        val id = key ?: ""
+        val imageUrl = child("imageUrl").getValue(String::class.java) ?: ""
+        val title = child("title").getValue(String::class.java) ?: ""
+        val actionUrl = child("actionUrl").getValue(String::class.java) ?: ""
+        val active = child("active").getValue(Boolean::class.java) ?: true
+        PromoSliderEntity(id, imageUrl, title, actionUrl, active)
     } catch (e: Exception) {
         null
     }

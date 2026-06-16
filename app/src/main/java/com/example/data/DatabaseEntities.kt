@@ -18,7 +18,8 @@ data class UserEntity(
     val isAdmin: Boolean = false,
     val password: String = "",
     val gameUid: String = "",
-    val referCode: String = ""
+    val referCode: String = "",
+    val inboxMessage: String = ""
 )
 
 @Entity(tableName = "tournaments")
@@ -35,7 +36,17 @@ data class TournamentEntity(
     val scheduleTimeMillis: Long,
     val status: String, // "OPEN", "UPCOMING", "LIVE", "COMPLETED"
     val roomId: String = "",
-    val roomPassword: String = ""
+    val roomPassword: String = "",
+    val bannerUrl: String = ""
+)
+
+@Entity(tableName = "promo_sliders")
+data class PromoSliderEntity(
+    @PrimaryKey val id: String,
+    val imageUrl: String,
+    val title: String = "",
+    val actionUrl: String = "",
+    val active: Boolean = true
 )
 
 @Entity(tableName = "daily_tasks")
@@ -145,6 +156,16 @@ interface EsportsDao {
 
     @Query("DELETE FROM transaction_records")
     suspend fun clearTransactions()
+
+    // Promo Sliders
+    @Query("SELECT * FROM promo_sliders WHERE active = 1")
+    fun getActivePromoSlidersFlow(): Flow<List<PromoSliderEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPromoSliders(sliders: List<PromoSliderEntity>)
+
+    @Query("DELETE FROM promo_sliders")
+    suspend fun clearPromoSliders()
 }
 
 @Database(
@@ -153,9 +174,10 @@ interface EsportsDao {
         TournamentEntity::class,
         DailyTaskEntity::class,
         TaskProgressEntity::class,
-        TransactionRecordEntity::class
+        TransactionRecordEntity::class,
+        PromoSliderEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

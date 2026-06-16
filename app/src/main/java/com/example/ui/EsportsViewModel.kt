@@ -15,7 +15,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.util.UUID
+import java.io.File
 
 class EsportsViewModel(
     private val context: Context,
@@ -50,6 +52,9 @@ class EsportsViewModel(
     val taskProgress: StateFlow<List<TaskProgressEntity>> = _taskProgress.asStateFlow()
 
     val transactions: StateFlow<List<TransactionRecordEntity>> = dao.getAllTransactionsFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val promoSliders: StateFlow<List<PromoSliderEntity>> = dao.getActivePromoSlidersFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allUsers: StateFlow<List<UserEntity>> = dao.getAllUsersFlow()
@@ -89,6 +94,29 @@ class EsportsViewModel(
             while (true) {
                 delay(1000)
                 updateCooldownTicks()
+            }
+        }
+
+        // Regularly check for tournament credentials unlocking
+        viewModelScope.launch {
+            val notifiedMatches = mutableSetOf<String>()
+            while (true) {
+                delay(30000) // check every 30 seconds
+                val now = System.currentTimeMillis()
+                val user = _currentUser.value
+                tournaments.value.forEach { match ->
+                    val timeToMatch = match.scheduleTimeMillis - now
+                    if (timeToMatch in 0..600000 && !notifiedMatches.contains(match.id) && user != null) {
+                        notifiedMatches.add(match.id)
+                        
+                        // Push an inbox notification to the current user
+                        val msg = "Room Info Ready! Lobby credentials for ${match.title} are now unlocked! Check the matches page."
+                        FirebaseDatabase.getInstance().getReference("users").child(user.emailKey).child("inboxMessage").setValue(msg)
+                        
+                        // NOTE: For true background OS notifications, implement Android NotificationManager or Firebase Cloud Messaging.
+                        // Here we use the in-app Inbox Messaging system to instantly alert the active player.
+                    }
+                }
             }
         }
 
@@ -281,6 +309,8 @@ class EsportsViewModel(
     }
 
     fun logout() {
+        _isLoading.value = false
+        _loginError.value = null
         syncManager.stopUserAndProgressSync()
         sharedPrefs.edit().remove("logged_in_email_key").apply()
         _currentUser.value = null
@@ -750,6 +780,44 @@ class EsportsViewModel(
                 "unity_interstitial_id" to interstitialId
             )
             syncManager.settingsRef.setValue(settings)
+        }
+    }
+
+    fun adminSendInboxMessage(userId: String, message: String) {
+        if (_currentUser.value?.isAdmin == true) {
+            FirebaseDatabase.getInstance().getReference("users").child(userId)
+                .child("inboxMessage").setValue(message)
+        }
+    }
+
+    fun clearInboxMessage() {
+        val user = _currentUser.value ?: return
+        FirebaseDatabase.getInstance().getReference("users").child(user.emailKey)
+            .child("inboxMessage").setValue("")
+    }
+
+    fun uploadImageToImgBB(file: File, onSuccess: (String) -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val url = ImgBBRepository.uploadImage(file)
+            withContext(Dispatchers.Main) {
+                if (url != null) {
+                    onSuccess(url)
+                } else {
+                    onError("Failed to upload image")
+                }
+            }
+        }
+    }
+
+    fun savePromoSlider(promo: PromoSliderEntity) {
+        if (_currentUser.value?.isAdmin == true) {
+            syncManager.savePromoSliderDirectly(promo)
+        }
+    }
+
+    fun deletePromoSlider(id: String) {
+        if (_currentUser.value?.isAdmin == true) {
+            syncManager.deletePromoSliderDirectly(id)
         }
     }
 
