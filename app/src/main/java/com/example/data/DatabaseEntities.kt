@@ -104,6 +104,17 @@ data class DiamondPackEntity(
     val coinCost: Int
 )
 
+@Entity(tableName = "notifications")
+data class NotificationEntity(
+    @PrimaryKey val id: String,
+    val emailKey: String, // "GLOBAL" for announcements or specific emailKey
+    val title: String,
+    val message: String,
+    val timestamp: Long,
+    val isRead: Boolean,
+    val type: String // "ANNOUNCEMENT", "DEPOSIT", "WITHDRAW", "DIAMOND", "TOURNAMENT"
+)
+
 @Dao
 interface EsportsDao {
     @Query("SELECT * FROM users WHERE emailKey = :emailKey")
@@ -217,6 +228,22 @@ interface EsportsDao {
 
     @Query("DELETE FROM promo_sliders")
     suspend fun clearPromoSliders()
+
+    // Notifications
+    @Query("SELECT * FROM notifications WHERE emailKey = :emailKey OR emailKey = 'GLOBAL' ORDER BY timestamp DESC")
+    fun getNotificationsFlow(emailKey: String): Flow<List<NotificationEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNotifications(notifications: List<NotificationEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNotification(notification: NotificationEntity)
+
+    @Query("DELETE FROM notifications")
+    suspend fun clearNotifications()
+
+    @Query("UPDATE notifications SET isRead = 1 WHERE emailKey = :emailKey OR emailKey = 'GLOBAL'")
+    suspend fun markAllNotificationsAsRead(emailKey: String)
 }
 
 @Database(
@@ -228,9 +255,10 @@ interface EsportsDao {
         TransactionRecordEntity::class,
         PromoSliderEntity::class,
         DiamondPackEntity::class,
-        AppConfigEntity::class
+        AppConfigEntity::class,
+        NotificationEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

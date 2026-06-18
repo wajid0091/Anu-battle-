@@ -14,3 +14,4 @@ val GrayText = Color(0xFF94A3B8)
 val DarkAccent = Color(0xFF1E293B) // slate-800
 val LightAccent = Color(0xFF334155) // slate-700
 val ElegantNavBg = Color(0xFF111827) // Elegant Dark Nav BG (#111827)
+val DefaultBlue = Color(0xFF007BFF)

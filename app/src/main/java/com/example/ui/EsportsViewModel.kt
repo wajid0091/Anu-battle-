@@ -95,6 +95,12 @@ class EsportsViewModel(
     val diamondPacks: StateFlow<List<DiamondPackEntity>> = dao.getAllDiamondPacksFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val notifications: StateFlow<List<NotificationEntity>> = _currentUser.flatMapLatest { user ->
+        val email = user?.emailKey ?: ""
+        if (email.isNotBlank()) dao.getNotificationsFlow(email) else flowOf(emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // Watch cooldown timer state (seconds active count from preferences)
     private val _cooldowns = MutableStateFlow<Map<String, Int>>(emptyMap())
     val cooldowns: StateFlow<Map<String, Int>> = _cooldowns.asStateFlow()
@@ -190,11 +196,12 @@ class EsportsViewModel(
     }
 
     private fun preInitializeUnityAds(gameId: String) {
-        if (gameId.isBlank()) return
+        val trimmedGameId = gameId.trim()
+        if (trimmedGameId.isBlank()) return
         viewModelScope.launch(Dispatchers.Main) {
             if (!UnityAds.isInitialized) {
                 try {
-                    UnityAds.initialize(context, gameId, false, object : IUnityAdsInitializationListener {
+                    UnityAds.initialize(context, trimmedGameId, false, object : IUnityAdsInitializationListener {
                         override fun onInitializationComplete() {
                             Log.d("UnityAds", "Unity Ads pre-initialized successfully.")
                         }
@@ -522,8 +529,8 @@ class EsportsViewModel(
     // Real Unity Ads integration with fallback simulation to handle live ads without blockage
     fun showUnityRewardedAd(activity: android.app.Activity, tournamentId: String, onAdShowResult: (Boolean) -> Unit = {}) {
         val user = _currentUser.value ?: return
-        val placementId = _unityRewardedId.value
-        val gameId = _unityGameId.value
+        val placementId = _unityRewardedId.value.trim()
+        val gameId = _unityGameId.value.trim()
 
         if (gameId.isBlank()) {
             activity.runOnUiThread {
@@ -638,22 +645,9 @@ class EsportsViewModel(
         updateCooldownTicks()
 
         // Update task progress if user has task "WATCH_AD"
+        saveTaskProgressByAction("PLAY_MINS", 1) // Play 2 minutes roughly
+        
         viewModelScope.launch(Dispatchers.IO) {
-            val progressKey = "${user.emailKey}_task_watch"
-            val activeProgress = _taskProgress.value.find { it.taskId == "task_watch" || it.taskId == "task_01" } 
-            val currentVal = activeProgress?.currentValue ?: 0
-            val target = 2 // standard play target limit
-            
-            // Write a dynamic progress update
-            val progressEntity = TaskProgressEntity(
-                compositeKey = "${user.emailKey}_task_watch",
-                emailKey = user.emailKey,
-                taskId = "task_watch",
-                currentValue = currentVal + 1,
-                claimed = currentVal + 1 >= target
-            )
-            syncManager.saveTaskProgressDirectly(progressEntity)
-
             // Grant dynamic reward for watching ad
             val rewardCoins = 5.0
             val updatedUser = user.copy(coins = user.coins + rewardCoins)
@@ -794,20 +788,50 @@ class EsportsViewModel(
         syncManager.saveTransactionDirectly(tx)
 
         // Increment dynamic task Join Tourney progress
-        viewModelScope.launch(Dispatchers.IO) {
-            val activeProgress = _taskProgress.value.find { it.taskId == "task_join" || it.taskId == "task_04" }
-            val currentVal = activeProgress?.currentValue ?: 0
-            val progressEntity = TaskProgressEntity(
-                compositeKey = "${user.emailKey}_task_join",
-                emailKey = user.emailKey,
-                taskId = "task_join",
-                currentValue = currentVal + 1,
-                claimed = currentVal + 1 >= 1
-            )
-            syncManager.saveTaskProgressDirectly(progressEntity)
-        }
+        saveTaskProgressByAction("JOIN_TOURNEY", 1)
 
         onSuccess()
+    }
+
+    fun saveTaskProgressByAction(actionType: String, increment: Int) {
+        val user = _currentUser.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val matchingTasks = dailyTasks.value.filter { it.taskType == actionType }
+            for (taskTemplate in matchingTasks) {
+                val taskId = taskTemplate.id
+                val progressKey = "${user.emailKey}_$taskId"
+                val activeProgress = _taskProgress.value.find { it.taskId == taskId }
+                val currentVal = activeProgress?.currentValue ?: 0
+                val target = taskTemplate.targetValue
+
+                val updatedProgress = TaskProgressEntity(
+                    compositeKey = progressKey,
+                    emailKey = user.emailKey,
+                    taskId = taskId,
+                    currentValue = currentVal + increment,
+                    claimed = currentVal + increment >= target
+                )
+                syncManager.saveTaskProgressDirectly(updatedProgress)
+
+                // If freshly completed claim, trigger award coins automatically
+                if (currentVal < target && (currentVal + increment) >= target) {
+                    val updatedUser = user.copy(coins = user.coins + taskTemplate.coinReward)
+                    syncManager.saveUserDirectly(updatedUser)
+
+                    val tx = TransactionRecordEntity(
+                        id = "task_complete_${taskId}_${user.emailKey}_${UUID.randomUUID()}",
+                        emailKey = user.emailKey,
+                        type = "REWARD_CLAIM",
+                        amount = 0.0,
+                        coins = taskTemplate.coinReward,
+                        status = "SUCCESS",
+                        timestamp = System.currentTimeMillis(),
+                        details = "Challenge '${taskTemplate.title}' reward auto-claimed"
+                    )
+                    syncManager.saveTransactionDirectly(tx)
+                }
+            }
+        }
     }
 
     // Save customized user task progress completion values
@@ -866,6 +890,7 @@ class EsportsViewModel(
             screenshotUrl = screenshotUrl
         )
         syncManager.saveTransactionDirectly(newTx)
+        saveTaskProgressByAction("DEPOSIT", 1)
         _depositRequestSuccess.value = "Deposit of Rs.${amount} is in queue! Admin will approve shortly."
     }
 
@@ -982,6 +1007,7 @@ class EsportsViewModel(
     fun adminCreateTournament(t: TournamentEntity) {
         if (_currentUser.value?.isAdmin == true) {
             syncManager.saveTournamentDirectly(t)
+            adminSendAnnouncement("New Tournament!", "A new tournament '${t.title}' has been scheduled. Join now!")
         }
     }
 
@@ -1083,6 +1109,12 @@ class EsportsViewModel(
         }
     }
 
+    fun initiateAdminSync() {
+        if (_currentUser.value?.isAdmin == true) {
+            syncManager.startAdminAllUsersSync()
+        }
+    }
+
     fun adminBanControlUser(emailKey: String, bannedState: Boolean) {
         if (_currentUser.value?.isAdmin == true) {
             FirebaseDatabase.getInstance().getReference("users").child(emailKey)
@@ -1095,6 +1127,14 @@ class EsportsViewModel(
             // Update tx state to APPROVED
             FirebaseDatabase.getInstance().getReference("transactions").child(tx.id)
                 .child("status").setValue("APPROVED")
+
+            // Send notification
+            sendUserNotification(
+                emailKey = tx.emailKey,
+                title = "Transaction Approved",
+                message = "Your ${tx.type.lowercase()} transaction has been approved.",
+                type = tx.type
+            )
 
             // If deposit, credit user wallet root
             if (tx.type == "DEPOSIT") {
@@ -1122,6 +1162,13 @@ class EsportsViewModel(
             FirebaseDatabase.getInstance().getReference("transactions").child(tx.id)
                 .child("status").setValue("REJECTED")
 
+            sendUserNotification(
+                emailKey = tx.emailKey,
+                title = "Transaction Rejected",
+                message = "Your ${tx.type.lowercase()} request was rejected. Please contact support.",
+                type = tx.type
+            )
+
             // If withdraw, refund the deducted amount
             if (tx.type == "WITHDRAW") {
                 FirebaseDatabase.getInstance().getReference("users").child(tx.emailKey)
@@ -1147,5 +1194,46 @@ class EsportsViewModel(
             ref.child("winningWallet").setValue(winning)
             ref.child("coins").setValue(coins)
         }
+    }
+
+    fun markNotificationsAsRead() {
+        val user = _currentUser.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            dao.markAllNotificationsAsRead(user.emailKey)
+            // also update in firebase to respect read status across devices
+            val notifs = notifications.value.filter { !it.isRead }
+            for (n in notifs) {
+                val path = if(n.emailKey == "GLOBAL") "notifications/GLOBAL/${n.id}/isRead" else "notifications/${user.emailKey}/${n.id}/isRead"
+                FirebaseDatabase.getInstance().getReference(path).setValue(true)
+            }
+        }
+    }
+
+    fun adminSendAnnouncement(title: String, message: String) {
+        if (_currentUser.value?.isAdmin == true) {
+            val id = UUID.randomUUID().toString()
+            val notif = mapOf(
+                "emailKey" to "GLOBAL",
+                "title" to title,
+                "message" to message,
+                "timestamp" to System.currentTimeMillis(),
+                "isRead" to false,
+                "type" to "ANNOUNCEMENT"
+            )
+            FirebaseDatabase.getInstance().getReference("notifications/GLOBAL/$id").setValue(notif)
+        }
+    }
+
+    fun sendUserNotification(emailKey: String, title: String, message: String, type: String) {
+        val id = UUID.randomUUID().toString()
+        val notif = mapOf(
+            "emailKey" to emailKey,
+            "title" to title,
+            "message" to message,
+            "timestamp" to System.currentTimeMillis(),
+            "isRead" to false,
+            "type" to type
+        )
+        FirebaseDatabase.getInstance().getReference("notifications/$emailKey/$id").setValue(notif)
     }
 }

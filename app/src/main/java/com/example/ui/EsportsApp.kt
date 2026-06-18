@@ -71,6 +71,7 @@ fun EsportsApp(viewModel: EsportsViewModel) {
     var activeScreen by remember { mutableStateOf("home") }
     var previousScreen by remember { mutableStateOf("home") }
     var inAdminMode by remember { mutableStateOf(false) }
+    var inNotificationsMode by remember { mutableStateOf(false) }
     var selectedTournamentId by remember { mutableStateOf<String?>(null) }
 
     val showMessage by viewModel.depositRequestSuccess.collectAsStateWithLifecycle()
@@ -94,7 +95,7 @@ fun EsportsApp(viewModel: EsportsViewModel) {
         
         Scaffold(
             bottomBar = {
-                if (!inAdminMode && selectedTournamentId == null) {
+                if (!inAdminMode && !inNotificationsMode && selectedTournamentId == null) {
                     Column {
                         HorizontalDivider(
                             color = DarkAccent.copy(alpha = 0.8f),
@@ -158,6 +159,13 @@ fun EsportsApp(viewModel: EsportsViewModel) {
                             onBack = { inAdminMode = false }
                         )
                     }
+                } else if (inNotificationsMode) {
+                    Box(modifier = Modifier.padding(innerPadding)) {
+                        NotificationsScreen(
+                            viewModel = viewModel,
+                            onBack = { inNotificationsMode = false }
+                        )
+                    }
                 } else if (selectedTournamentId != null) {
                     TournamentDetailScreen(
                         tournamentId = selectedTournamentId!!,
@@ -170,10 +178,9 @@ fun EsportsApp(viewModel: EsportsViewModel) {
                             // Header Box details
                             HeaderBox(
                                 user = user,
+                                viewModel = viewModel,
                                 onAdminClick = { if (user.isAdmin) inAdminMode = true },
-                                onNotificationClick = {
-                                    Toast.makeText(context, "Notifications up to date!", Toast.LENGTH_SHORT).show()
-                                }
+                                onNotificationClick = { inNotificationsMode = true }
                             )
 
                             Box(modifier = Modifier.weight(1f)) {
@@ -214,9 +221,13 @@ data class NavigationItem(
 @Composable
 fun HeaderBox(
     user: UserEntity,
+    viewModel: EsportsViewModel,
     onAdminClick: () -> Unit,
     onNotificationClick: () -> Unit
 ) {
+    val notifications by viewModel.notifications.collectAsStateWithLifecycle()
+    val unreadCount = notifications.count { !it.isRead }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -338,11 +349,21 @@ fun HeaderBox(
 
                 Spacer(modifier = Modifier.width(6.dp))
                 IconButton(onClick = onNotificationClick) {
-                    Icon(
-                        imageVector = Icons.Default.Notifications,
-                        contentDescription = "Alerts",
-                        tint = Color.White
-                    )
+                    BadgedBox(
+                        badge = {
+                            if (unreadCount > 0) {
+                                Badge(containerColor = NeonOrange) {
+                                    Text(unreadCount.toString(), color = Color.White)
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Alerts",
+                            tint = Color.White
+                        )
+                    }
                 }
             }
         }
@@ -1236,7 +1257,7 @@ fun TournamentDetailScreen(
             Surface(
                 color = CharcoalCard,
                 tonalElevation = 8.dp,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding()
             ) {
                 Row(
                     modifier = Modifier
@@ -1949,6 +1970,54 @@ fun StoreScreen(viewModel: EsportsViewModel) {
     var showWithdrawDialog by remember { mutableStateOf(false) }
     var withdrawAmountText by remember { mutableStateOf("") }
     var withdrawDetailsText by remember { mutableStateOf("") }
+    
+    var selectedDiamondPack by remember { mutableStateOf<com.example.data.DiamondPackEntity?>(null) }
+    
+    // Diamond Redemption Dialog
+    if (selectedDiamondPack != null) {
+        val pack = selectedDiamondPack!!
+        Dialog(onDismissRequest = { selectedDiamondPack = null }) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("Confirm Redemption", color = NeonGold, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("You are about to redeem ${pack.title}.", color = Color.White, fontSize = 14.sp, textAlign = TextAlign.Center)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Cost: ${pack.coinCost.toInt()} Coins", color = NeonOrange, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Target UID: ${user.gameUid}", color = MintGreen, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        TextButton(onClick = { selectedDiamondPack = null }) {
+                            Text("CANCEL", color = GrayText)
+                        }
+                        Button(
+                            onClick = {
+                                if (user.coins >= pack.coinCost) {
+                                    Toast.makeText(context, "Redemption Request Submitted!", Toast.LENGTH_SHORT).show()
+                                    viewModel.submitDiamondRedemption(pack.title, pack.coinCost)
+                                    selectedDiamondPack = null
+                                } else {
+                                    Toast.makeText(context, "Not enough coins for this bundle!", Toast.LENGTH_SHORT).show()
+                                    selectedDiamondPack = null
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = NeonGold)
+                        ) {
+                            Text("SUBMIT", color = CharcoalBg, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -2067,12 +2136,7 @@ fun StoreScreen(viewModel: EsportsViewModel) {
                             colors = CardDefaults.cardColors(containerColor = CharcoalCard),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f).clickable {
-                                if (user.coins >= pack.coinCost) {
-                                    Toast.makeText(context, "Redemption Request Submitted!", Toast.LENGTH_SHORT).show()
-                                    viewModel.submitDiamondRedemption(pack.title, pack.coinCost)
-                                } else {
-                                    Toast.makeText(context, "Not enough coins for this bundle!", Toast.LENGTH_SHORT).show()
-                                }
+                                selectedDiamondPack = pack
                             }
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(12.dp)) {
@@ -2544,14 +2608,10 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
                                     )
                                 } else {
                                     Text(
-                                        text = "Tap to Complete",
+                                        text = "In Progress",
                                         color = NeonOrange,
                                         fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.clickable {
-                                            viewModel.saveTaskProgress(task.id, 1)
-                                            Toast.makeText(context, "Progress updated!", Toast.LENGTH_SHORT).show()
-                                        }
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
@@ -2874,6 +2934,10 @@ fun AdminDashboardScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
     var adminTab by remember { mutableStateOf("Users") }
     val adminTabs = listOf("Users", "Add Tourney", "Task CRUD", "Diamond CRUD", "Settings", "Deposit/Withdraw Queue", "Promos")
 
+    LaunchedEffect(Unit) {
+        viewModel.initiateAdminSync()
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -2961,17 +3025,31 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
     var adjustWinningsWallet by remember { mutableStateOf("") }
     var adjustCoinsWallet by remember { mutableStateOf("") }
 
+    var viewFullDetailsUser by remember { mutableStateOf<UserEntity?>(null) }
+    var showBroadcastDialog by remember { mutableStateOf(false) }
+    var broadcastTitle by remember { mutableStateOf("") }
+    var broadcastMessage by remember { mutableStateOf("") }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        OutlinedTextField(
-            value = searchToken,
-            onValueChange = { searchToken = it },
-            label = { Text("Search users name / email details") },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White, focusedBorderColor = NeonGold
-            ),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = searchToken,
+                onValueChange = { searchToken = it },
+                label = { Text("Search users") },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White, focusedBorderColor = NeonGold
+                ),
+                singleLine = true,
+                modifier = Modifier.weight(1f).padding(end = 8.dp)
+            )
+            Button(
+                onClick = { showBroadcastDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = DefaultBlue),
+                modifier = Modifier.height(56.dp)
+            ) {
+                Text("Broadcast", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
 
         Spacer(modifier = Modifier.height(10.dp))
 
@@ -3032,20 +3110,119 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
 
                         Spacer(modifier = Modifier.height(12.dp))
 
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Button(
+                                onClick = { viewFullDetailsUser = u },
+                                colors = ButtonDefaults.buttonColors(containerColor = DefaultBlue),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.weight(1f).padding(end = 4.dp)
+                            ) {
+                                Text("Full Details", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            
+                            Button(
+                                onClick = {
+                                    adjustMainWallet = u.mainWallet.toString()
+                                    adjustBonusWallet = u.bonusWallet.toString()
+                                    adjustWinningsWallet = u.winningWallet.toString()
+                                    adjustCoinsWallet = u.coins.toString()
+                                    editingUserWallets = u
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.weight(1f).padding(start = 4.dp)
+                            ) {
+                                Text("Adjust Balances", color = CharcoalBg, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showBroadcastDialog) {
+        Dialog(onDismissRequest = { showBroadcastDialog = false }) {
+            Card(colors = CardDefaults.cardColors(containerColor = CharcoalCard), shape = RoundedCornerShape(16.dp)) {
+                Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(text = "Broadcast Announcement", color = NeonGold, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(14.dp))
+                    OutlinedTextField(value = broadcastTitle, onValueChange = { broadcastTitle = it }, label = { Text("Title") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(value = broadcastMessage, onValueChange = { broadcastMessage = it }, label = { Text("Message") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth(), minLines = 3)
+                    
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        TextButton(onClick = { showBroadcastDialog = false }) { Text("CANCEL", color = GrayText) }
                         Button(
                             onClick = {
-                                adjustMainWallet = u.mainWallet.toString()
-                                adjustBonusWallet = u.bonusWallet.toString()
-                                adjustWinningsWallet = u.winningWallet.toString()
-                                adjustCoinsWallet = u.coins.toString()
-                                editingUserWallets = u
+                                viewModel.adminSendAnnouncement(broadcastTitle, broadcastMessage)
+                                showBroadcastDialog = false
+                                broadcastTitle = ""
+                                broadcastMessage = ""
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(text = "Adjust Wallets / Coins", color = CharcoalBg, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            colors = ButtonDefaults.buttonColors(containerColor = NeonGold)
+                        ) { Text("SEND TO ALL", color = CharcoalBg) }
+                    }
+                }
+            }
+        }
+    }
+
+    viewFullDetailsUser?.let { user ->
+        Dialog(onDismissRequest = { viewFullDetailsUser = null }) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f)
+            ) {
+                Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+                    Text("User Full Details", color = NeonGold, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Divider(color = NeonGold.copy(0.3f), modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    LazyColumn(modifier = Modifier.weight(1f)) {
+                        item {
+                            Text("Name: ${user.name}", color = Color.White, fontSize = 14.sp)
+                            Text("Email: ${user.email}", color = GrayText, fontSize = 12.sp)
+                            Text("Password (Plain): ${user.password}", color = Color.Red, fontSize = 12.sp) // Admin visibility
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            Text("Game UID: ${user.gameUid}", color = Color.White, fontSize = 14.sp)
+                            Text("Device IP / ID: ${user.deviceId}", color = NeonOrange, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            if (users.count { it.deviceId == user.deviceId } > 1) {
+                                Text("⚠️ Warning: Multiple accounts on this device!", color = Color.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Refer Code: ${user.referCode}", color = MintGreen, fontSize = 14.sp)
+                            Text("Referred By: ${if (user.referredBy.isEmpty()) "None" else user.referredBy}", color = Color.White, fontSize = 12.sp)
+                            Text("Total Referrals: ${user.totalReferrals}", color = Color.White, fontSize = 12.sp)
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Matches Played: ${user.matchesPlayed}", color = Color.White, fontSize = 12.sp)
+                            Text("Matches Won: ${user.matchesWon}", color = Color.White, fontSize = 12.sp)
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Send Direct Message to User", color = NeonGold, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            OutlinedTextField(
+                                value = broadcastMessage,
+                                onValueChange = { broadcastMessage = it },
+                                label = { Text("Message specific user") },
+                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Button(
+                                onClick = {
+                                    viewModel.sendUserNotification(user.emailKey, "Message from Admin", broadcastMessage, "ANNOUNCEMENT")
+                                    broadcastMessage = ""
+                                },
+                                modifier = Modifier.padding(top = 8.dp).fillMaxWidth()
+                            ) { Text("Send Notification") }
                         }
+                    }
+                    
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { viewFullDetailsUser = null }) { Text("CLOSE", color = Color.White) }
                     }
                 }
             }
@@ -4156,6 +4333,67 @@ fun AdminDiamondCRUDTab(viewModel: EsportsViewModel) {
                             }) {
                                 Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete Pack", tint = Color.Red)
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun NotificationsScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
+    val notifications by viewModel.notifications.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        viewModel.markNotificationsAsRead()
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+            }
+            Text(text = "Announcements & Alerts", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+        }
+
+        if (notifications.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(text = "You have no new notifications.", color = GrayText, fontSize = 14.sp)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                contentPadding = PaddingValues(bottom = 80.dp)
+            ) {
+                items(notifications) { notif ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = if (notif.isRead) CharcoalCard else DefaultBlue.copy(alpha = 0.2f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = if (notif.type == "ANNOUNCEMENT") Icons.Default.Campaign else Icons.Default.NotificationsActive,
+                                    contentDescription = "Notification Icon",
+                                    tint = if (notif.type == "ANNOUNCEMENT") NeonOrange else NeonGold,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(text = notif.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(text = notif.message, color = Color.White.copy(0.8f), fontSize = 14.sp, lineHeight = 20.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(notif.timestamp),
+                                color = GrayText,
+                                fontSize = 10.sp
+                            )
                         }
                     }
                 }

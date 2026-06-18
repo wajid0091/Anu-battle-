@@ -20,6 +20,7 @@ class FirebaseSyncManager(
     private val promosRef = database.getReference("promo_sliders")
     val settingsRef = database.getReference("settings")
     private val diamondRef = database.getReference("diamond_packages")
+    private val notificationsRef = database.getReference("notifications")
     
     private var activeUsersListener: ValueEventListener? = null
     private var tournamentsListener: ValueEventListener? = null
@@ -28,6 +29,8 @@ class FirebaseSyncManager(
     private var promosListener: ValueEventListener? = null
     private var progressListener: ValueEventListener? = null
     private var diamondListener: ValueEventListener? = null
+    private var notificationsListener: ValueEventListener? = null
+    private var globalNotificationsListener: ValueEventListener? = null
 
     init {
         startMetadataSync()
@@ -81,6 +84,54 @@ class FirebaseSyncManager(
             }
             override fun onCancelled(error: DatabaseError) {}
         })
+
+        // Listen to specific user notifications
+        val userNotifRef = notificationsRef.child(emailKey)
+        notificationsListener = userNotifRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val notifList = mutableListOf<NotificationEntity>()
+                for (child in snapshot.children) {
+                    child.toNotificationEntity()?.let { notifList.add(it.copy(emailKey = emailKey)) }
+                }
+                scope.launch(Dispatchers.IO) {
+                    dao.insertNotifications(notifList)
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
+
+        // Listen to global announcements
+        val globalNotifRef = notificationsRef.child("GLOBAL")
+        globalNotificationsListener = globalNotifRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val notifList = mutableListOf<NotificationEntity>()
+                for (child in snapshot.children) {
+                    child.toNotificationEntity()?.let { notifList.add(it.copy(emailKey = "GLOBAL")) }
+                }
+                scope.launch(Dispatchers.IO) {
+                    dao.insertNotifications(notifList)
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
+    }
+
+    private var allUsersListener: ValueEventListener? = null
+    fun startAdminAllUsersSync() {
+        if (allUsersListener == null) {
+            allUsersListener = usersRef.addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val list = mutableListOf<UserEntity>()
+                    for (child in snapshot.children) {
+                        child.toUserEntity()?.let { list.add(it) }
+                    }
+                    scope.launch(Dispatchers.IO) {
+                        list.forEach { dao.insertUser(it) }
+                    }
+                }
+                override fun onCancelled(error: DatabaseError) {}
+            })
+        }
     }
 
     fun stopUserAndProgressSync() {
@@ -398,6 +449,21 @@ private fun DataSnapshot.toDiamondPackEntity(): DiamondPackEntity? {
         val title = child("title").getValue(String::class.java) ?: ""
         val coinCost = child("coinCost").getValue(Int::class.java) ?: 0
         DiamondPackEntity(id, title, coinCost)
+    } catch (e: Exception) {
+        null
+    }
+}
+
+private fun DataSnapshot.toNotificationEntity(): NotificationEntity? {
+    return try {
+        val id = key ?: ""
+        val emailKey = child("emailKey").getValue(String::class.java) ?: ""
+        val title = child("title").getValue(String::class.java) ?: ""
+        val message = child("message").getValue(String::class.java) ?: ""
+        val timestamp = child("timestamp").getValue(Long::class.java) ?: 0L
+        val isRead = child("isRead").getValue(Boolean::class.java) ?: false
+        val type = child("type").getValue(String::class.java) ?: ""
+        NotificationEntity(id, emailKey, title, message, timestamp, isRead, type)
     } catch (e: Exception) {
         null
     }
