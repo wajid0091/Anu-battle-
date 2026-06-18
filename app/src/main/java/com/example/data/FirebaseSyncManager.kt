@@ -19,6 +19,7 @@ class FirebaseSyncManager(
     private val transactionsRef = database.getReference("transactions")
     private val promosRef = database.getReference("promo_sliders")
     val settingsRef = database.getReference("settings")
+    private val diamondRef = database.getReference("diamond_packages")
     
     private var activeUsersListener: ValueEventListener? = null
     private var tournamentsListener: ValueEventListener? = null
@@ -26,6 +27,7 @@ class FirebaseSyncManager(
     private var transactionsListener: ValueEventListener? = null
     private var promosListener: ValueEventListener? = null
     private var progressListener: ValueEventListener? = null
+    private var diamondListener: ValueEventListener? = null
 
     init {
         startMetadataSync()
@@ -146,6 +148,21 @@ class FirebaseSyncManager(
             }
             override fun onCancelled(error: DatabaseError) {}
         })
+
+        diamondListener = diamondRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<DiamondPackEntity>()
+                for (child in snapshot.children) {
+                    val p = child.toDiamondPackEntity()
+                    if (p != null) list.add(p)
+                }
+                scope.launch(Dispatchers.IO) {
+                    dao.clearDiamondPacks()
+                    dao.insertDiamondPacks(list)
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
     }
 
     private fun seedDefaultsIfEmpty() {
@@ -199,6 +216,23 @@ class FirebaseSyncManager(
             }
             override fun onCancelled(error: DatabaseError) {}
         })
+
+        diamondRef.addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (!snapshot.exists()) {
+                    val initialPacks = listOf(
+                        DiamondPackEntity("dim_1", "110 Diamonds", 100),
+                        DiamondPackEntity("dim_2", "231 Diamonds", 200),
+                        DiamondPackEntity("dim_3", "583 Diamonds", 500),
+                        DiamondPackEntity("dim_4", "1188 Diamonds", 1000)
+                    )
+                    for (p in initialPacks) {
+                        diamondRef.child(p.id).setValue(p)
+                    }
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
     }
 
     fun saveUserDirectly(user: UserEntity) {
@@ -243,6 +277,14 @@ class FirebaseSyncManager(
 
     fun deletePromoSliderDirectly(id: String) {
         promosRef.child(id).removeValue()
+    }
+
+    fun saveDiamondPackDirectly(pack: DiamondPackEntity) {
+        diamondRef.child(pack.id).setValue(pack)
+    }
+
+    fun deleteDiamondPackDirectly(id: String) {
+        diamondRef.child(id).removeValue()
     }
 }
 
@@ -334,6 +376,17 @@ private fun DataSnapshot.toPromoSliderEntity(): PromoSliderEntity? {
         val actionUrl = child("actionUrl").getValue(String::class.java) ?: ""
         val active = child("active").getValue(Boolean::class.java) ?: true
         PromoSliderEntity(id, imageUrl, title, actionUrl, active)
+    } catch (e: Exception) {
+        null
+    }
+}
+
+private fun DataSnapshot.toDiamondPackEntity(): DiamondPackEntity? {
+    return try {
+        val id = key ?: ""
+        val title = child("title").getValue(String::class.java) ?: ""
+        val coinCost = child("coinCost").getValue(Int::class.java) ?: 0
+        DiamondPackEntity(id, title, coinCost)
     } catch (e: Exception) {
         null
     }

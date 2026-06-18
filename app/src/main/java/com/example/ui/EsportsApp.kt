@@ -71,6 +71,7 @@ fun EsportsApp(viewModel: EsportsViewModel) {
     var activeScreen by remember { mutableStateOf("home") }
     var previousScreen by remember { mutableStateOf("home") }
     var inAdminMode by remember { mutableStateOf(false) }
+    var selectedTournamentId by remember { mutableStateOf<String?>(null) }
 
     val showMessage by viewModel.depositRequestSuccess.collectAsStateWithLifecycle()
 
@@ -93,7 +94,7 @@ fun EsportsApp(viewModel: EsportsViewModel) {
         
         Scaffold(
             bottomBar = {
-                if (!inAdminMode) {
+                if (!inAdminMode && selectedTournamentId == null) {
                     Column {
                         HorizontalDivider(
                             color = DarkAccent.copy(alpha = 0.8f),
@@ -149,31 +150,47 @@ fun EsportsApp(viewModel: EsportsViewModel) {
                 modifier = Modifier
                     .fillMaxSize()
                     .background(CharcoalBg)
-                    .padding(innerPadding)
             ) {
                 if (inAdminMode && user.isAdmin) {
-                    AdminDashboardScreen(
+                    Box(modifier = Modifier.padding(innerPadding)) {
+                        AdminDashboardScreen(
+                            viewModel = viewModel,
+                            onBack = { inAdminMode = false }
+                        )
+                    }
+                } else if (selectedTournamentId != null) {
+                    TournamentDetailScreen(
+                        tournamentId = selectedTournamentId!!,
                         viewModel = viewModel,
-                        onBack = { inAdminMode = false }
+                        onBack = { selectedTournamentId = null }
                     )
                 } else {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        // Header Box details
-                        HeaderBox(
-                            user = user,
-                            onAdminClick = { if (user.isAdmin) inAdminMode = true },
-                            onNotificationClick = {
-                                Toast.makeText(context, "Notifications up to date!", Toast.LENGTH_SHORT).show()
-                            }
-                        )
+                    Box(modifier = Modifier.padding(innerPadding)) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            // Header Box details
+                            HeaderBox(
+                                user = user,
+                                onAdminClick = { if (user.isAdmin) inAdminMode = true },
+                                onNotificationClick = {
+                                    Toast.makeText(context, "Notifications up to date!", Toast.LENGTH_SHORT).show()
+                                }
+                            )
 
-                        Box(modifier = Modifier.weight(1f)) {
-                            when (activeScreen) {
-                                "home" -> HomeScreen(viewModel = viewModel, onNavigate = { activeScreen = it })
-                                "games" -> GamesScreen(viewModel = viewModel)
-                                "store" -> StoreScreen(viewModel = viewModel)
-                                "rewards" -> RewardsScreen(viewModel = viewModel)
-                                "profile" -> ProfileScreen(viewModel = viewModel, onLogout = { viewModel.logout() })
+                            Box(modifier = Modifier.weight(1f)) {
+                                when (activeScreen) {
+                                    "home" -> HomeScreen(
+                                        viewModel = viewModel,
+                                        onNavigate = { activeScreen = it },
+                                        onSelectTournament = { selectedTournamentId = it }
+                                    )
+                                    "games" -> GamesScreen(
+                                        viewModel = viewModel,
+                                        onSelectTournament = { selectedTournamentId = it }
+                                    )
+                                    "store" -> StoreScreen(viewModel = viewModel)
+                                    "rewards" -> RewardsScreen(viewModel = viewModel)
+                                    "profile" -> ProfileScreen(viewModel = viewModel, onLogout = { viewModel.logout() })
+                                }
                             }
                         }
                     }
@@ -678,7 +695,7 @@ fun LoginRegisterScreen(
 // TAB SCREEN: HOME TABS / BANNER ACTIONS
 // ============================================
 @Composable
-fun HomeScreen(viewModel: EsportsViewModel, onNavigate: (String) -> Unit) {
+fun HomeScreen(viewModel: EsportsViewModel, onNavigate: (String) -> Unit, onSelectTournament: (String) -> Unit) {
     val context = LocalContext.current
     val user by viewModel.currentUser.collectAsStateWithLifecycle()
     val tournaments by viewModel.tournaments.collectAsStateWithLifecycle()
@@ -856,9 +873,7 @@ fun HomeScreen(viewModel: EsportsViewModel, onNavigate: (String) -> Unit) {
                 TournamentCard(
                     tournament = match,
                     user = user,
-                    cooldown = 0,
-                    onWatchAdClick = {},
-                    onRegisterClick = { onNavigate("games") }
+                    onClick = { onSelectTournament(match.id) }
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }
@@ -1194,6 +1209,7 @@ fun TournamentCard(
 ) {
     val context = LocalContext.current
     var isPassVisible by remember { mutableStateOf(false) }
+    var showDetailsModal by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
     val now = System.currentTimeMillis()
     
@@ -1204,7 +1220,7 @@ fun TournamentCard(
     val isUserJoined = user != null && user.joinedTournaments.contains(tournament.id)
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { showDetailsModal = true },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = CharcoalCard),
         border = BorderStroke(1.dp, NeonGold.copy(alpha = 0.2f))
@@ -1557,6 +1573,198 @@ fun TournamentCard(
             }
         }
     }
+
+    if (showDetailsModal) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showDetailsModal = false }) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0B121E)),
+                border = BorderStroke(1.5.dp, Color(0xFF00B4D8)),
+                modifier = Modifier.fillMaxWidth().padding(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = tournament.title,
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.Start)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF121B2C), RoundedCornerShape(10.dp))
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("PRIZE POOL", color = Color(0xFF90E0EF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text("Rs.${tournament.prizePool}", color = NeonGold, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                        Column {
+                            Text("ENTRY FEE", color = Color(0xFF90E0EF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text(if (tournament.entryFee == 0.0) "FREE" else "Rs.${tournament.entryFee}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Column {
+                            Text("SLOTS FILLED", color = Color(0xFF90E0EF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text("${tournament.slotsFilled}/${tournament.totalSlots}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = "Rules & Match Guidelines:",
+                        color = Color(0xFF90E0EF),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.Start)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = tournament.description.ifBlank { "No special rules stated for this arena lobby. Standard rules apply." },
+                        color = Color.LightGray,
+                        fontSize = 12.sp,
+                        modifier = Modifier.align(Alignment.Start),
+                        lineHeight = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    Text(
+                        text = "LOBBY ACCESS CREDENTIALS",
+                        color = Color(0xFF0077B6),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.align(Alignment.Start)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0A1E3F)),
+                        border = BorderStroke(1.dp, Color(0xFF00B4D8)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (isUserJoined) {
+                                if (isScheduleUnlockReady) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "ROOM ID: ${tournament.roomId.ifBlank { "Lobby being configured..." }}",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                        if (tournament.roomId.isNotBlank()) {
+                                            IconButton(
+                                                onClick = {
+                                                    clipboardManager.setText(AnnotatedString(tournament.roomId))
+                                                    Toast.makeText(context, "Room ID Copied!", Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.ContentCopy,
+                                                    contentDescription = "Copy ID",
+                                                    tint = Color(0xFF00B4D8),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "PASSWORD: ${tournament.roomPassword.ifBlank { "Lobby being configured..." }}",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                        if (tournament.roomPassword.isNotBlank()) {
+                                            IconButton(
+                                                onClick = {
+                                                    clipboardManager.setText(AnnotatedString(tournament.roomPassword))
+                                                    Toast.makeText(context, "Password Copied!", Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.ContentCopy,
+                                                    contentDescription = "Copy Pass",
+                                                    tint = Color(0xFF00B4D8),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    val diffMinutes = (timeToMatch / 60000)
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 8.dp)) {
+                                        Icon(imageVector = Icons.Default.Lock, contentDescription = "Locked", tint = Color(0xFF00B4D8), modifier = Modifier.size(24.dp))
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = "Match credentials unlock in $diffMinutes minutes",
+                                            color = Color(0xFF90E0EF),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "Come back 10 minutes prior to scheduled start time.",
+                                            color = Color.Gray,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                            } else {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 8.dp)) {
+                                    Icon(imageVector = Icons.Default.Lock, contentDescription = "Join Required", tint = Color.Gray, modifier = Modifier.size(24.dp))
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = "Please Join the Tournament first!",
+                                        color = Color.LightGray,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Only registered participants can access lobby keys.",
+                                        color = Color.Gray,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Button(
+                        onClick = { showDetailsModal = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0077B6)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().height(42.dp)
+                    ) {
+                        Text("CLOSE OVERLAY", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ============================================
@@ -1573,6 +1781,7 @@ fun StoreScreen(viewModel: EsportsViewModel) {
     val jcTitle by viewModel.jcTitle.collectAsStateWithLifecycle()
     val jcNum by viewModel.jcNumber.collectAsStateWithLifecycle()
     val minWithdraw by viewModel.minWithdraw.collectAsStateWithLifecycle()
+    val diamondPacks by viewModel.diamondPacks.collectAsStateWithLifecycle()
 
     var showDepositDialog by remember { mutableStateOf(false) }
     var depositAmountText by remember { mutableStateOf("") }
@@ -1767,6 +1976,59 @@ fun StoreScreen(viewModel: EsportsViewModel) {
                 }
             }
         }
+
+        item {
+            Text(
+                text = "Redeem Diamonds (Free Fire)",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 24.dp, bottom = 4.dp)
+            )
+            Text(
+                text = "Directly redeem your collected gameplay coins into Free Fire Diamond items.",
+                color = GrayText,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+        }
+
+        val chunkedPacks = diamondPacks.chunked(2)
+        for (rowPacks in chunkedPacks) {
+            item {
+                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    for (pack in rowPacks) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f).clickable {
+                                if (user.coins >= pack.coinCost) {
+                                    Toast.makeText(context, "Redemption Request Submitted!", Toast.LENGTH_SHORT).show()
+                                    viewModel.submitDiamondRedemption(pack.title, pack.coinCost)
+                                } else {
+                                    Toast.makeText(context, "Not enough coins for this bundle!", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                                Icon(
+                                    imageVector = Icons.Default.Diamond,
+                                    contentDescription = "Diamonds",
+                                    tint = NeonGold,
+                                    modifier = Modifier.size(40.dp).padding(bottom = 8.dp)
+                                )
+                                Text(text = pack.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(text = "${pack.coinCost} Coins", color = NeonOrange, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                    }
+                    if (rowPacks.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
     }
 
     // Deposit dialogue modal
@@ -1946,6 +2208,7 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
     val dailyTasks by viewModel.dailyTasks.collectAsStateWithLifecycle()
     val taskProgress by viewModel.taskProgress.collectAsStateWithLifecycle()
     val claimedDays by viewModel.claimedDays.collectAsStateWithLifecycle()
+    val dbDailyRewards by viewModel.dbDailyRewards.collectAsStateWithLifecycle()
 
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -1975,7 +2238,7 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
                     .horizontalScroll(rememberScrollState())
                     .padding(vertical = 4.dp)
             ) {
-                val rewardsList = listOf(5.0, 5.0, 5.0, 10.0, 5.0, 5.0, 15.0)
+                val rewardsList = dbDailyRewards
                 val now = System.currentTimeMillis()
                 var currentDay = if (now - (user?.lastDailyRewardTime ?: 0L) > (2 * 24 * 60 * 60 * 1000L)) 1 else (user?.dailyRewardDay ?: 1)
                 
@@ -2040,7 +2303,7 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
                                 )
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Text(
-                                    text = "${rewardsList[day - 1].toInt()} Coins",
+                                    text = "${rewardsList.getOrElse(day - 1) { 5.0 }.toInt()} Coins",
                                     color = NeonGold,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
@@ -2088,67 +2351,6 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
-        }
-
-        item {
-            val diamondPacks = listOf(
-                Pair("110 Diamonds", 100),
-                Pair("231 Diamonds", 200),
-                Pair("583 Diamonds", 500),
-                Pair("1188 Diamonds", 1000)
-            )
-
-            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Text(
-                    text = "Free Fire Diamond Top-Up",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                )
-                Text(
-                    text = "Redeem your collected coins into Free Fire Diamonds direct to your Game UID.",
-                    color = GrayText,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-                
-                // Using nested rows for grid to avoid scroll constraint conflicts
-                val chunkedPacks = diamondPacks.chunked(2)
-                for (rowPacks in chunkedPacks) {
-                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        for (pack in rowPacks) {
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = CharcoalCard),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.weight(1f).clickable {
-                                    if (user.coins >= pack.second) {
-                                        Toast.makeText(context, "Redemption Request Submitted!", Toast.LENGTH_SHORT).show()
-                                        viewModel.submitDiamondRedemption(pack.first, pack.second)
-                                    } else {
-                                        Toast.makeText(context, "Not enough coins!", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                                    Icon(
-                                        imageVector = Icons.Default.Diamond,
-                                        contentDescription = "Diamonds",
-                                        tint = NeonGold,
-                                        modifier = Modifier.size(40.dp).padding(bottom = 8.dp)
-                                    )
-                                    Text(text = pack.first, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(text = "${pack.second} Coins", color = NeonOrange, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
-                                }
-                            }
-                        }
-                        if (rowPacks.size == 1) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
         }
     } // end LazyColumn
     } // end Column wrapper
@@ -2409,7 +2611,7 @@ fun ProfileTile(
 @Composable
 fun AdminDashboardScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
     var adminTab by remember { mutableStateOf("Users") }
-    val adminTabs = listOf("Users", "Add Tourney", "Task CRUD", "Settings", "Deposit/Withdraw Queue", "Promos")
+    val adminTabs = listOf("Users", "Add Tourney", "Task CRUD", "Diamond CRUD", "Settings", "Deposit/Withdraw Queue", "Promos")
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -2474,6 +2676,7 @@ fun AdminDashboardScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
                 "Users" -> AdminUsersTab(viewModel)
                 "Add Tourney" -> AdminTournamentsCreatorTab(viewModel)
                 "Task CRUD" -> AdminTaskCRUDTab(viewModel)
+                "Diamond CRUD" -> AdminDiamondCRUDTab(viewModel)
                 "Settings" -> AdminSettingsTab(viewModel)
                 "Deposit/Withdraw Queue" -> AdminTransactionsQueueTab(viewModel)
                 "Promos" -> AdminPromosTab(viewModel)
@@ -2637,6 +2840,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
     var roomPassword by remember { mutableStateOf("") }
     var bannerUrl by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var scheduleDate by remember { mutableStateOf("") }
+    var scheduleTime by remember { mutableStateOf("") }
     var uploadingImage by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -2685,6 +2890,16 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                 roomPassword = ""
                 bannerUrl = ""
                 description = ""
+                
+                val cal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.HOUR_OF_DAY, 2) }
+                val yr = cal.get(java.util.Calendar.YEAR)
+                val mo = String.format("%02d", cal.get(java.util.Calendar.MONTH) + 1)
+                val dy = String.format("%02d", cal.get(java.util.Calendar.DAY_OF_MONTH))
+                val hr = String.format("%02d", cal.get(java.util.Calendar.HOUR_OF_DAY))
+                val mn = String.format("%02d", cal.get(java.util.Calendar.MINUTE))
+                scheduleDate = "$yr-$mo-$dy"
+                scheduleTime = "$hr:$mn"
+                
                 showDialog = true
             },
             colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
@@ -2725,6 +2940,17 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                                     roomPassword = t.roomPassword
                                     bannerUrl = t.bannerUrl
                                     description = t.description
+                                    
+                                    val cal = java.util.Calendar.getInstance()
+                                    cal.timeInMillis = t.scheduleTimeMillis
+                                    val yr = cal.get(java.util.Calendar.YEAR)
+                                    val mo = String.format("%02d", cal.get(java.util.Calendar.MONTH) + 1)
+                                    val dy = String.format("%02d", cal.get(java.util.Calendar.DAY_OF_MONTH))
+                                    val hr = String.format("%02d", cal.get(java.util.Calendar.HOUR_OF_DAY))
+                                    val mn = String.format("%02d", cal.get(java.util.Calendar.MINUTE))
+                                    scheduleDate = "$yr-$mo-$dy"
+                                    scheduleTime = "$hr:$mn"
+                                    
                                     showDialog = true
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
@@ -2876,6 +3102,24 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                         modifier = Modifier.fillMaxWidth()
                     )
 
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = scheduleDate,
+                        onValueChange = { scheduleDate = it },
+                        label = { Text("Match Date (YYYY-MM-DD family, e.g. 2026-06-20)") },
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = scheduleTime,
+                        onValueChange = { scheduleTime = it },
+                        label = { Text("Match Time (HH:MM 24-Hour, e.g. 18:30)") },
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2895,6 +3139,27 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                                     val finalPrizePool = if (isFree) 0.0 else (prizePool.toDoubleOrNull() ?: 0.0)
                                     val finalAdsRequired = if (isFree) (adsRequired.toIntOrNull() ?: 3) else 0
 
+                                    val finalScheduleMillis = try {
+                                        val partsDate = scheduleDate.trim().split("-")
+                                        val partsTime = scheduleTime.trim().split(":")
+                                        if (partsDate.size == 3 && partsTime.size == 2) {
+                                            val calendar = java.util.Calendar.getInstance()
+                                            calendar.set(
+                                                partsDate[0].toInt(),
+                                                partsDate[1].toInt() - 1,
+                                                partsDate[2].toInt(),
+                                                partsTime[0].toInt(),
+                                                partsTime[1].toInt(),
+                                                0
+                                            )
+                                            calendar.timeInMillis
+                                        } else {
+                                            System.currentTimeMillis() + 1800000L
+                                        }
+                                    } catch (e: Exception) {
+                                        System.currentTimeMillis() + 1800000L
+                                    }
+
                                     val original = tournaments.find { it.id == editingTournamentId }
                                     val entity = TournamentEntity(
                                         id = editingTournamentId ?: "match_${System.currentTimeMillis().toString().takeLast(6)}",
@@ -2906,7 +3171,7 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                                         slotsFilled = original?.slotsFilled ?: 0,
                                         totalSlots = totalSlots.toIntOrNull() ?: 100,
                                         adsRequired = finalAdsRequired,
-                                        scheduleTimeMillis = original?.scheduleTimeMillis ?: (System.currentTimeMillis() + 1800000), // Note: Hardcoded time logic requires a datetime picker in real app
+                                        scheduleTimeMillis = finalScheduleMillis,
                                         status = original?.status ?: "OPEN",
                                         roomId = roomId,
                                         roomPassword = roomPassword,
@@ -3127,6 +3392,7 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
     val jcTitle by viewModel.jcTitle.collectAsStateWithLifecycle()
     val jcNum by viewModel.jcNumber.collectAsStateWithLifecycle()
     val minWithdraw by viewModel.minWithdraw.collectAsStateWithLifecycle()
+    val dbDailyRewards by viewModel.dbDailyRewards.collectAsStateWithLifecycle()
 
     var inputGameId by remember { mutableStateOf(gameId) }
     var inputRewardedId by remember { mutableStateOf(rewardedId) }
@@ -3137,7 +3403,15 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
     var inputJcNum by remember { mutableStateOf(jcNum) }
     var inputMinWithdraw by remember { mutableStateOf(minWithdraw) }
 
-    LaunchedEffect(gameId, rewardedId, interstitialId, epTitle, epNum, jcTitle, jcNum, minWithdraw) {
+    var inputR1 by remember { mutableStateOf("5.0") }
+    var inputR2 by remember { mutableStateOf("5.0") }
+    var inputR3 by remember { mutableStateOf("5.0") }
+    var inputR4 by remember { mutableStateOf("10.0") }
+    var inputR5 by remember { mutableStateOf("5.0") }
+    var inputR6 by remember { mutableStateOf("5.0") }
+    var inputR7 by remember { mutableStateOf("15.0") }
+
+    LaunchedEffect(gameId, rewardedId, interstitialId, epTitle, epNum, jcTitle, jcNum, minWithdraw, dbDailyRewards) {
         inputGameId = gameId
         inputRewardedId = rewardedId
         inputInterstitialId = interstitialId
@@ -3146,6 +3420,14 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
         inputJcTitle = jcTitle
         inputJcNum = jcNum
         inputMinWithdraw = minWithdraw
+        
+        inputR1 = dbDailyRewards.getOrNull(0)?.toString() ?: "5.0"
+        inputR2 = dbDailyRewards.getOrNull(1)?.toString() ?: "5.0"
+        inputR3 = dbDailyRewards.getOrNull(2)?.toString() ?: "5.0"
+        inputR4 = dbDailyRewards.getOrNull(3)?.toString() ?: "10.0"
+        inputR5 = dbDailyRewards.getOrNull(4)?.toString() ?: "5.0"
+        inputR6 = dbDailyRewards.getOrNull(5)?.toString() ?: "5.0"
+        inputR7 = dbDailyRewards.getOrNull(6)?.toString() ?: "15.0"
     }
 
     val context = LocalContext.current
@@ -3175,10 +3457,40 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
         OutlinedTextField(value = inputMinWithdraw, onValueChange = { inputMinWithdraw = it }, label = { Text("Minimum Withdrawal Amount") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth())
 
         Spacer(modifier = Modifier.height(24.dp))
+        Text(text = "Daily Streak Rewards Setup (Coins)", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(value = inputR1, onValueChange = { inputR1 = it }, label = { Text("Day 1") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.weight(1f))
+            OutlinedTextField(value = inputR2, onValueChange = { inputR2 = it }, label = { Text("Day 2") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.weight(1f))
+            OutlinedTextField(value = inputR3, onValueChange = { inputR3 = it }, label = { Text("Day 3") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.weight(1f))
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(value = inputR4, onValueChange = { inputR4 = it }, label = { Text("Day 4") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.weight(1f))
+            OutlinedTextField(value = inputR5, onValueChange = { inputR5 = it }, label = { Text("Day 5") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.weight(1f))
+            OutlinedTextField(value = inputR6, onValueChange = { inputR6 = it }, label = { Text("Day 6") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.weight(1f))
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(value = inputR7, onValueChange = { inputR7 = it }, label = { Text("Day 7 (Grand Bonus)") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth())
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = {
-                viewModel.adminSetPlatformSettings(inputGameId, inputRewardedId, inputInterstitialId, inputEpNum, inputEpTitle, inputJcNum, inputJcTitle, inputMinWithdraw)
+                val r1 = inputR1.toDoubleOrNull() ?: 5.0
+                val r2 = inputR2.toDoubleOrNull() ?: 5.0
+                val r3 = inputR3.toDoubleOrNull() ?: 5.0
+                val r4 = inputR4.toDoubleOrNull() ?: 10.0
+                val r5 = inputR5.toDoubleOrNull() ?: 5.0
+                val r6 = inputR6.toDoubleOrNull() ?: 5.0
+                val r7 = inputR7.toDoubleOrNull() ?: 15.0
+
+                viewModel.adminSetPlatformSettings(
+                    inputGameId, inputRewardedId, inputInterstitialId,
+                    inputEpNum, inputEpTitle, inputJcNum, inputJcTitle, inputMinWithdraw,
+                    r1, r2, r3, r4, r5, r6, r7
+                )
                 Toast.makeText(context, "Settings Updated successfully!", Toast.LENGTH_SHORT).show()
             },
             colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
@@ -3402,6 +3714,133 @@ fun AdminPromosTab(viewModel: EsportsViewModel) {
                         }
                         IconButton(onClick = { viewModel.deletePromoSlider(p.id) }) {
                             Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete Promo", tint = Color.Red)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AdminDiamondCRUDTab(viewModel: EsportsViewModel) {
+    val diamondPacks by viewModel.diamondPacks.collectAsStateWithLifecycle()
+
+    var editingPackId by remember { mutableStateOf<String?>(null) }
+    var title by remember { mutableStateOf("") }
+    var coinCost by remember { mutableStateOf("") }
+
+    val context = LocalContext.current
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text(
+                    text = if (editingPackId == null) "Add Diamond Package" else "Edit Diamond Package",
+                    color = NeonGold,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Package Title (e.g. 110 Diamonds)") },
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                OutlinedTextField(
+                    value = coinCost,
+                    onValueChange = { coinCost = it },
+                    label = { Text("Coin Cost (e.g. 100)") },
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Button(
+                    onClick = {
+                        val cost = coinCost.toIntOrNull() ?: -1
+                        if (title.isBlank() || cost < 0) {
+                            Toast.makeText(context, "Please enter valid Title and Coin Cost!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            val id = editingPackId ?: "dim_${System.currentTimeMillis()}"
+                            val pack = DiamondPackEntity(
+                                id = id,
+                                title = title,
+                                coinCost = cost
+                            )
+                            viewModel.adminCreateDiamondPack(pack)
+                            Toast.makeText(context, if (editingPackId == null) "Diamond Package added!" else "Diamond Package modified!", Toast.LENGTH_SHORT).show()
+                            editingPackId = null
+                            title = ""
+                            coinCost = ""
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MintGreen),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = if (editingPackId == null) "SAVE PACKAGE" else "MODIFY PACKAGE", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                
+                if (editingPackId != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Button(
+                        onClick = {
+                            editingPackId = null
+                            title = ""
+                            coinCost = ""
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = "CANCEL EDIT", color = Color.White)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        Text(text = "Existing Diamond Packages", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Spacer(modifier = Modifier.height(10.dp))
+
+        LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            items(diamondPacks) { pack ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    colors = CardDefaults.cardColors(containerColor = CharcoalCard)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(text = pack.title, color = Color.White, fontWeight = FontWeight.Bold)
+                            Text(text = "Cost: ${pack.coinCost} Coins", color = NeonGold, fontSize = 12.sp)
+                        }
+                        Row {
+                            IconButton(onClick = {
+                                editingPackId = pack.id
+                                title = pack.title
+                                coinCost = pack.coinCost.toString()
+                            }) {
+                                Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit Pack", tint = NeonGold)
+                            }
+                            IconButton(onClick = {
+                                viewModel.adminDeleteDiamondPack(pack.id)
+                                Toast.makeText(context, "Package Deleted!", Toast.LENGTH_SHORT).show()
+                            }) {
+                                Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete Pack", tint = Color.Red)
+                            }
                         }
                     }
                 }

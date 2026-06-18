@@ -83,6 +83,12 @@ class EsportsViewModel(
     private val _minWithdraw = MutableStateFlow("50")
     val minWithdraw: StateFlow<String> = _minWithdraw.asStateFlow()
 
+    private val _dbDailyRewards = MutableStateFlow(listOf(5.0, 5.0, 5.0, 10.0, 5.0, 5.0, 15.0))
+    val dbDailyRewards: StateFlow<List<Double>> = _dbDailyRewards.asStateFlow()
+
+    val diamondPacks: StateFlow<List<DiamondPackEntity>> = dao.getAllDiamondPacksFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // Watch cooldown timer state (seconds active count from preferences)
     private val _cooldowns = MutableStateFlow<Map<String, Int>>(emptyMap())
     val cooldowns: StateFlow<Map<String, Int>> = _cooldowns.asStateFlow()
@@ -146,6 +152,15 @@ class EsportsViewModel(
                     _jcTitle.value = snapshot.child("jc_title").getValue(String::class.java) ?: ""
                     _minWithdraw.value = snapshot.child("min_withdraw").getValue(String::class.java) ?: "50"
                     
+                    val r1 = snapshot.child("daily_reward_1").getValue(Double::class.java) ?: snapshot.child("daily_reward_1").getValue(Long::class.java)?.toDouble() ?: 5.0
+                    val r2 = snapshot.child("daily_reward_2").getValue(Double::class.java) ?: snapshot.child("daily_reward_2").getValue(Long::class.java)?.toDouble() ?: 5.0
+                    val r3 = snapshot.child("daily_reward_3").getValue(Double::class.java) ?: snapshot.child("daily_reward_3").getValue(Long::class.java)?.toDouble() ?: 5.0
+                    val r4 = snapshot.child("daily_reward_4").getValue(Double::class.java) ?: snapshot.child("daily_reward_4").getValue(Long::class.java)?.toDouble() ?: 10.0
+                    val r5 = snapshot.child("daily_reward_5").getValue(Double::class.java) ?: snapshot.child("daily_reward_5").getValue(Long::class.java)?.toDouble() ?: 5.0
+                    val r6 = snapshot.child("daily_reward_6").getValue(Double::class.java) ?: snapshot.child("daily_reward_6").getValue(Long::class.java)?.toDouble() ?: 5.0
+                    val r7 = snapshot.child("daily_reward_7").getValue(Double::class.java) ?: snapshot.child("daily_reward_7").getValue(Long::class.java)?.toDouble() ?: 15.0
+                    _dbDailyRewards.value = listOf(r1, r2, r3, r4, r5, r6, r7)
+
                     // Dynamic automatic pre-initialization of Unity Ads with admin configurations
                     preInitializeUnityAds(_unityGameId.value)
                 }
@@ -375,12 +390,14 @@ class EsportsViewModel(
         
         // Prevent claiming early
         if (now - user.lastDailyRewardTime < oneDayMillis && user.lastDailyRewardTime > 0) {
-            val remainHours = 24 - ((now - user.lastDailyRewardTime) / (60 * 60 * 1000L))
-            onError("Please wait $remainHours hours for the next claim.")
+            val diff = oneDayMillis - (now - user.lastDailyRewardTime)
+            val hours = diff / (60 * 60 * 1000L)
+            val minutes = (diff % (60 * 60 * 1000L)) / (60 * 1000L)
+            onError("Next reward available in ${hours}h ${minutes}m.")
             return
         }
         
-        val rewardsList = listOf(5.0, 5.0, 5.0, 10.0, 5.0, 5.0, 15.0)
+        val rewardsList = _dbDailyRewards.value
         val coinsReward = rewardsList.getOrElse(currentDay - 1) { 5.0 }
         
         val nextDay = if (currentDay >= 7) 1 else currentDay + 1
@@ -890,7 +907,11 @@ class EsportsViewModel(
         }
     }
 
-    fun adminSetPlatformSettings(gameId: String, rewardedId: String, interstitialId: String, epNum: String, epName: String, jcNum: String, jcName: String, minW: String) {
+    fun adminSetPlatformSettings(
+        gameId: String, rewardedId: String, interstitialId: String,
+        epNum: String, epName: String, jcNum: String, jcName: String, minW: String,
+        r1: Double, r2: Double, r3: Double, r4: Double, r5: Double, r6: Double, r7: Double
+    ) {
         if (_currentUser.value?.isAdmin == true) {
             val settings = mapOf(
                 "unity_game_id" to gameId,
@@ -900,9 +921,28 @@ class EsportsViewModel(
                 "ep_title" to epName,
                 "jc_number" to jcNum,
                 "jc_title" to jcName,
-                "min_withdraw" to minW
+                "min_withdraw" to minW,
+                "daily_reward_1" to r1,
+                "daily_reward_2" to r2,
+                "daily_reward_3" to r3,
+                "daily_reward_4" to r4,
+                "daily_reward_5" to r5,
+                "daily_reward_6" to r6,
+                "daily_reward_7" to r7
             )
             syncManager.settingsRef.setValue(settings)
+        }
+    }
+
+    fun adminCreateDiamondPack(pack: DiamondPackEntity) {
+        if (_currentUser.value?.isAdmin == true) {
+            syncManager.saveDiamondPackDirectly(pack)
+        }
+    }
+
+    fun adminDeleteDiamondPack(id: String) {
+        if (_currentUser.value?.isAdmin == true) {
+            syncManager.deleteDiamondPackDirectly(id)
         }
     }
 

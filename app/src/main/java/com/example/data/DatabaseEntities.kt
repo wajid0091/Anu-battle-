@@ -85,6 +85,13 @@ data class TransactionRecordEntity(
     val screenshotUrl: String = ""
 )
 
+@Entity(tableName = "diamond_packages")
+data class DiamondPackEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val coinCost: Int
+)
+
 @Dao
 interface EsportsDao {
     @Query("SELECT * FROM users WHERE emailKey = :emailKey")
@@ -134,6 +141,22 @@ interface EsportsDao {
     @Query("DELETE FROM daily_tasks")
     suspend fun clearDailyTasks()
 
+    // Diamond Packages
+    @Query("SELECT * FROM diamond_packages")
+    fun getAllDiamondPacksFlow(): Flow<List<DiamondPackEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDiamondPacks(packs: List<DiamondPackEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDiamondPack(pack: DiamondPackEntity)
+
+    @Query("DELETE FROM diamond_packages WHERE id = :id")
+    suspend fun deleteDiamondPackById(id: String)
+
+    @Query("DELETE FROM diamond_packages")
+    suspend fun clearDiamondPacks()
+
     // Task Progress
     @Query("SELECT * FROM task_progress WHERE emailKey = :emailKey")
     fun getTaskProgressFlow(emailKey: String): Flow<List<TaskProgressEntity>>
@@ -181,9 +204,10 @@ interface EsportsDao {
         DailyTaskEntity::class,
         TaskProgressEntity::class,
         TransactionRecordEntity::class,
-        PromoSliderEntity::class
+        PromoSliderEntity::class,
+        DiamondPackEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
