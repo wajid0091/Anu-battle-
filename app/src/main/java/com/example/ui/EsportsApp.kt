@@ -926,10 +926,10 @@ fun RowScope.FastGridButton(
 // TAB SCREEN: TOURNEY GAMES LOBBY (COMPOSABLE FILTERED GRID)
 // ============================================
 @Composable
-fun GamesScreen(viewModel: EsportsViewModel) {
+fun GamesScreen(viewModel: EsportsViewModel, onSelectTournament: (String) -> Unit) {
     val context = LocalContext.current
     val tournaments by viewModel.tournaments.collectAsStateWithLifecycle()
-    val cooldowns by viewModel.cooldowns.collectAsStateWithLifecycle()
+    val cooldownedInfo by viewModel.cooldowns.collectAsStateWithLifecycle()
     val user by viewModel.currentUser.collectAsStateWithLifecycle()
     
     var gameFilter by remember { mutableStateOf("All") }
@@ -943,10 +943,6 @@ fun GamesScreen(viewModel: EsportsViewModel) {
         val sMatch = statusFilter == "All" || match.status == statusFilter
         gMatch && sMatch
     }
-
-    // Modal view for Tournament Registration
-    var selectedMatchForRegister by remember { mutableStateOf<TournamentEntity?>(null) }
-    var adsWatchedForRegister by remember { mutableStateOf(0) }
 
     LazyColumn(
         modifier = Modifier
@@ -1046,151 +1042,12 @@ fun GamesScreen(viewModel: EsportsViewModel) {
             }
         } else {
             items(filteredList) { match ->
-                val remainingCd = cooldowns[match.id] ?: 0
                 TournamentCard(
                     tournament = match,
                     user = user,
-                    cooldown = remainingCd,
-                    onWatchAdClick = {
-                        if (remainingCd > 0) {
-                            Toast.makeText(context, "Please wait for cooldown timer to complete!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            val activity = context.findActivity()
-                            if (activity != null) {
-                                viewModel.showUnityRewardedAd(activity, match.id)
-                            } else {
-                                viewModel.simulateAdWatch(match.id)
-                                Toast.makeText(context, "Rewarded Ad Complete! 5.0 Coins added.", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    },
-                    onRegisterClick = {
-                        adsWatchedForRegister = 0
-                        selectedMatchForRegister = match
-                    }
+                    onClick = { onSelectTournament(match.id) }
                 )
                 Spacer(modifier = Modifier.height(14.dp))
-            }
-        }
-    }
-
-    // Join Tournament dialog modals
-    selectedMatchForRegister?.let { match ->
-        Dialog(onDismissRequest = { selectedMatchForRegister = null }) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = CharcoalCard),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Join Arena Lobby",
-                        color = NeonGold,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = match.title,
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    if (match.adsRequired > 0) {
-                        Text(
-                            text = "Required Views to Join: ${match.adsRequired}",
-                            color = GrayText,
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val activeCooldown = cooldowns[match.id] ?: 0
-                            Button(
-                                onClick = {
-                                    if (activeCooldown > 0) {
-                                        Toast.makeText(context, "Please wait for cooldown timer to complete!", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        val activity = context.findActivity()
-                                        if (activity != null) {
-                                            viewModel.showUnityRewardedAd(activity, match.id) { success ->
-                                                if (success) {
-                                                    adsWatchedForRegister++
-                                                    Toast.makeText(context, "Ad View Tracked! (${adsWatchedForRegister}/${match.adsRequired} completed)", Toast.LENGTH_SHORT).show()
-                                                }
-                                            }
-                                        } else {
-                                            viewModel.simulateAdWatch(match.id)
-                                            adsWatchedForRegister++
-                                            Toast.makeText(context, "Ad View Tracked! (${adsWatchedForRegister}/${match.adsRequired} completed)", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (activeCooldown > 0) Color.LightGray else NeonOrange
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.padding(end = 8.dp)
-                            ) {
-                                Text(
-                                    text = if (activeCooldown > 0) {
-                                        val min = activeCooldown / 60
-                                        val sec = activeCooldown % 60
-                                        String.format("Next Ad: %02d:%02d", min, sec)
-                                    } else "Watch Video"
-                                )
-                            }
-                            Text(
-                                text = "$adsWatchedForRegister / ${match.adsRequired}",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                    Text(
-                        text = "Entry Fee: Rs.${match.entryFee}",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        TextButton(onClick = { selectedMatchForRegister = null }) {
-                            Text(text = "CANCEL", color = GrayText)
-                        }
-                        Button(
-                            onClick = {
-                                viewModel.joinTournament(
-                                    tournament = match,
-                                    adCountWatched = adsWatchedForRegister,
-                                    onSuccess = {
-                                        Toast.makeText(context, "Successfully joined tournament lobby!", Toast.LENGTH_LONG).show()
-                                        selectedMatchForRegister = null
-                                    },
-                                    onError = { er ->
-                                        Toast.makeText(context, er, Toast.LENGTH_LONG).show()
-                                    }
-                                )
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MintGreen)
-                        ) {
-                            Text(text = "CONFIRM JOIN", color = Color.White)
-                        }
-                    }
-                }
             }
         }
     }
@@ -1203,34 +1060,24 @@ fun GamesScreen(viewModel: EsportsViewModel) {
 fun TournamentCard(
     tournament: TournamentEntity,
     user: UserEntity?,
-    cooldown: Int,
-    onWatchAdClick: () -> Unit,
-    onRegisterClick: () -> Unit
+    onClick: () -> Unit
 ) {
     val context = LocalContext.current
-    var isPassVisible by remember { mutableStateOf(false) }
-    var showDetailsModal by remember { mutableStateOf(false) }
-    val clipboardManager = LocalClipboardManager.current
-    val now = System.currentTimeMillis()
-    
-    // Check credentials schedule condition: Mode 1 (Always unlocked), Mode 2 (Locked until exactly 10 mins prior)
-    val timeToMatch = tournament.scheduleTimeMillis - now
-    val isScheduleUnlockReady = timeToMatch <= 600000 // Less than or equal to 10 minutes (600,000ms)
-
-    val isUserJoined = user != null && user.joinedTournaments.contains(tournament.id)
 
     Card(
-        modifier = Modifier.fillMaxWidth().clickable { showDetailsModal = true },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = CharcoalCard),
         border = BorderStroke(1.dp, NeonGold.copy(alpha = 0.2f))
     ) {
         Column {
-            // Header Image Placeholder or status color
+            // Header Image/Gradient Block
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(110.dp)
+                    .height(115.dp)
             ) {
                 if (tournament.bannerUrl.isNotBlank()) {
                     coil.compose.AsyncImage(
@@ -1242,14 +1089,16 @@ fun TournamentCard(
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
-                    // Dim overlay
+                    // Gradient dark overlay
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, CharcoalCard.copy(alpha = 0.9f)),
-                                startY = 40f
-                            ))
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color.Transparent, CharcoalCard.copy(alpha = 0.95f)),
+                                    startY = 60f
+                                )
+                            )
                     )
                 } else {
                     Box(
@@ -1257,16 +1106,19 @@ fun TournamentCard(
                             .fillMaxSize()
                             .background(
                                 brush = Brush.verticalGradient(
-                                    listOf(NeonOrange.copy(alpha = 0.3f), CharcoalCard)
+                                    listOf(NeonOrange.copy(alpha = 0.45f), CharcoalCard)
                                 )
                             )
                     )
                 }
 
                 Column(
-                    modifier = Modifier.fillMaxSize().padding(14.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(14.dp),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
+                    // Status Badge (Upper Left)
                     val badgeColor = when (tournament.status) {
                         "COMPLETED" -> Color.Gray
                         "UPCOMING" -> NeonOrange
@@ -1274,7 +1126,7 @@ fun TournamentCard(
                         else -> MintGreen
                     }
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = badgeColor.copy(alpha = 0.8f)),
+                        colors = CardDefaults.cardColors(containerColor = badgeColor.copy(alpha = 0.85f)),
                         shape = RoundedCornerShape(4.dp)
                     ) {
                         Text(
@@ -1286,40 +1138,49 @@ fun TournamentCard(
                         )
                     }
 
+                    // Title & Description (Overlay on Image Bottom)
                     Column {
                         Text(
                             text = tournament.title,
                             color = Color.White,
-                            fontSize = 16.sp,
+                            fontSize = 17.sp,
                             fontWeight = FontWeight.ExtraBold
                         )
                         Text(
                             text = "${tournament.gameType} Tournament • Map: ${tournament.mapType}",
-                            color = Color.LightGray,
+                            color = Color.LightGray.copy(alpha = 0.9f),
                             fontSize = 11.sp
                         )
                     }
                 }
             }
 
-            // Stats row details
-            Column(modifier = Modifier.padding(14.dp)) {
+            // Stats footer (Bottom Black/Charcoal area matching second picture perfectly!)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF0C1322)) // Blackish color
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text(text = "PRIZE POOL", color = GrayText, fontSize = 10.sp)
+                        Text(text = "PRIZE POOL", color = GrayText, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "Rs.${tournament.prizePool}",
                             color = NeonGold,
-                            fontSize = 16.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = "ENTRY FEE", color = GrayText, fontSize = 10.sp)
+                        Text(text = "ENTRY FEE", color = GrayText, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = if (tournament.entryFee == 0.0) "FREE" else "Rs.${tournament.entryFee}",
                             color = Color.White,
@@ -1329,7 +1190,8 @@ fun TournamentCard(
                     }
 
                     Column(horizontalAlignment = Alignment.End) {
-                        Text(text = "SLOTS FILLED", color = GrayText, fontSize = 10.sp)
+                        Text(text = "SLOTS FILLED", color = GrayText, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "${tournament.slotsFilled}/${tournament.totalSlots}",
                             color = Color.White,
@@ -1338,232 +1200,419 @@ fun TournamentCard(
                         )
                     }
                 }
+            }
+        }
+    }
+}
 
-                Spacer(modifier = Modifier.height(12.dp))
+// ============================================
+// WIDGET: FULL SCREEN TOURNAMENT DETAILS SCREEN
+// ============================================
+@Composable
+fun TournamentDetailScreen(
+    tournamentId: String,
+    viewModel: EsportsViewModel,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val tournaments by viewModel.tournaments.collectAsStateWithLifecycle()
+    val tournament = tournaments.find { it.id == tournamentId } ?: return
+    val userState by viewModel.currentUser.collectAsStateWithLifecycle()
+    val user = userState ?: return
+    val cooldowns by viewModel.cooldowns.collectAsStateWithLifecycle()
+    val remainingCd = cooldowns[tournament.id] ?: 0
 
-                // Schedule display
-                val sdf = SimpleDateFormat("EE dd MMM - hh:mm a", Locale.getDefault())
-                val dateString = sdf.format(Date(tournament.scheduleTimeMillis))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Schedule,
-                        contentDescription = "Schedule",
-                        tint = GrayText,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Schedule: $dateString",
-                        color = GrayText,
-                        fontSize = 11.sp
-                    )
-                }
+    // Local state for tracking ads watched specifically for registration
+    var adsWatchedForRegister by remember { mutableStateOf(0) }
+    val isUserJoined = user.joinedTournaments.contains(tournament.id)
+    val clipboardManager = LocalClipboardManager.current
 
-                Spacer(modifier = Modifier.height(14.dp))
+    val now = System.currentTimeMillis()
+    val timeToMatch = tournament.scheduleTimeMillis - now
+    val isScheduleUnlockReady = timeToMatch <= 600000 // 10 minutes prior
 
-                // Description
-                if (tournament.description.isNotBlank()) {
-                    Text(
-                        text = "Rules & Details: ${tournament.description}",
-                        color = GrayText,
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-                }
+    Scaffold(
+        bottomBar = {
+            Surface(
+                color = CharcoalCard,
+                tonalElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Entry Ticket cost:",
+                            color = GrayText,
+                            fontSize = 11.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (tournament.entryFee == 0.0) "FREE" else "Rs.${tournament.entryFee}",
+                            color = NeonGold,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
 
-                // Register Actions row
-                if (tournament.status == "OPEN" || tournament.status == "UPCOMING") {
                     if (isUserJoined) {
-                        // Already joined message
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MintGreen.copy(alpha = 0.1f)),
-                            border = BorderStroke(1.dp, MintGreen.copy(alpha = 0.5f))
+                            colors = CardDefaults.cardColors(containerColor = MintGreen.copy(alpha = 0.15f)),
+                            border = BorderStroke(1.dp, MintGreen.copy(alpha = 0.4f)),
+                            shape = RoundedCornerShape(8.dp)
                         ) {
                             Text(
-                                text = "You have successfully registered for this tournament.",
+                                text = "REGISTERED",
                                 color = MintGreen,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(10.dp)
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                             )
                         }
                     } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                        // Anti-Ban Cooldown Button representation
-                        if (tournament.adsRequired > 0) {
-                            Button(
-                                onClick = onWatchAdClick,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (cooldown > 0) MaterialTheme.colorScheme.surfaceVariant else NeonOrange.copy(alpha = 0.2f)
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                enabled = cooldown == 0,
-                                modifier = Modifier
-                                    .weight(1.2f)
-                                    .testTag("ad_cooldown_btn")
-                            ) {
-                                if (cooldown > 0) {
-                                    val min = cooldown / 60
-                                    val sec = cooldown % 60
-                                    Text(
-                                        text = String.format("Next Ad: %02d:%02d", min, sec),
-                                        color = GrayText,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                        val adRequiredButNotDone = tournament.adsRequired > 0 && adsWatchedForRegister < tournament.adsRequired
+                        Button(
+                            onClick = {
+                                if (adRequiredButNotDone) {
+                                    Toast.makeText(context, "Please finish watching all ${tournament.adsRequired} required video views to bypass registration!", Toast.LENGTH_SHORT).show()
                                 } else {
-                                    Icon(
-                                        imageVector = Icons.Default.PlayArrow,
-                                        contentDescription = "Watch",
-                                        tint = NeonOrange,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "Unlock (Ad Required)",
-                                        color = NeonOrange,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
+                                    viewModel.joinTournament(
+                                        tournament = tournament,
+                                        adCountWatched = adsWatchedForRegister,
+                                        onSuccess = {
+                                            Toast.makeText(context, "Successfully joined tournament lobby!", Toast.LENGTH_LONG).show()
+                                        },
+                                        onError = { error ->
+                                            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                                        }
                                     )
                                 }
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-
-                        Button(
-                            onClick = onRegisterClick,
-                            colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (adRequiredButNotDone) Color.Gray else NeonGold
+                            ),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
-                                .weight(1f)
-                                .height(38.dp)
-                                .testTag("lobby_register_btn")
+                                .height(44.dp)
                         ) {
                             Text(
-                                text = "JOIN NOW",
-                                color = CharcoalBg,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp
+                                text = if (adRequiredButNotDone) "LOCKED" else "SECURE SLOT",
+                                color = if (adRequiredButNotDone) Color.LightGray else CharcoalBg,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp
                             )
                         }
                     }
-                } // closes else
-                } // closes if (tournament.status ...)
-
-                // Credentials unlock copy panel
-                if ((tournament.status == "OPEN" || tournament.status == "LIVE") && isUserJoined) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = CharcoalBg),
-                        shape = RoundedCornerShape(8.dp)
+                }
+            }
+        }
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(CharcoalBg)
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp)
+        ) {
+            // Back navigation & Header Row
+            item {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .background(CharcoalCard, CircleShape)
+                            .size(36.dp)
                     ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Lock,
-                                        contentDescription = "Room Credentials",
-                                        tint = if (isScheduleUnlockReady) NeonGold else GrayText,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = if (isScheduleUnlockReady) "Room Credentials Unlocked" else "Lobby credentials locked",
-                                        color = if (isScheduleUnlockReady) Color.White else GrayText,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = tournament.title,
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
-                                if (isScheduleUnlockReady) {
-                                    TextButton(
-                                        onClick = { isPassVisible = !isPassVisible },
-                                        contentPadding = PaddingValues(0.dp)
-                                    ) {
-                                        Text(
-                                            text = if (isPassVisible) "HIDE" else "SHOW",
-                                            color = NeonGold,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
+            // Cover Banner Image
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, NeonGold.copy(alpha = 0.2f))
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        if (tournament.bannerUrl.isNotBlank()) {
+                            coil.compose.AsyncImage(
+                                model = coil.request.ImageRequest.Builder(context)
+                                    .data(tournament.bannerUrl)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = "Tournament Banner",
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(NeonOrange.copy(alpha = 0.45f), CharcoalBg)
                                         )
-                                    }
-                                } else {
-                                    val diffMinutes = (timeToMatch / 60000)
-                                    Text(
-                                        text = "Unlocks in ${diffMinutes}m",
-                                        color = GrayText,
-                                        fontSize = 10.sp,
-                                        fontFamily = FontFamily.Monospace
                                     )
-                                }
+                            )
+                        }
+
+                        // Gradient overlay
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                                    )
+                                )
+                        )
+
+                        // Badges + Text overlaid inside the banner
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = NeonOrange.copy(alpha = 0.2f)),
+                                border = BorderStroke(1.dp, NeonOrange),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = tournament.gameType.uppercase(),
+                                    color = NeonOrange,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
                             }
 
-                            if (isScheduleUnlockReady && isPassVisible) {
-                                Spacer(modifier = Modifier.height(10.dp))
+                            Column {
+                                Text(
+                                    text = tournament.title,
+                                    color = Color.White,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Mode: Solo • Map: ${tournament.mapType} • Format: Classic",
+                                    color = Color.LightGray,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // Horizontal Status Cards (Row of 3 cards)
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Card 1: Prize Pool
+                    Card(
+                        modifier = Modifier.weight(1.1f),
+                        colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color.DarkGray)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = null,
+                                tint = NeonGold,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "PRIZE POOL",
+                                color = GrayText,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Rs.${tournament.prizePool}",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // Card 2: Date & Time
+                    val sdf = SimpleDateFormat("EE dd MMM", Locale.getDefault())
+                    val timeSdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
+                    val dateStr = sdf.format(Date(tournament.scheduleTimeMillis))
+                    val timeStr = timeSdf.format(Date(tournament.scheduleTimeMillis))
+                    Card(
+                        modifier = Modifier.weight(1.2f),
+                        colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color.DarkGray)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Schedule,
+                                contentDescription = null,
+                                tint = NeonOrange,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "DATE & TIME",
+                                color = GrayText,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = dateStr,
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = timeStr,
+                                color = Color.LightGray,
+                                fontSize = 9.sp
+                            )
+                        }
+                    }
+
+                    // Card 3: Slots Remaining
+                    val remainingSlots = (tournament.totalSlots - tournament.slotsFilled).coerceAtLeast(0)
+                    Card(
+                        modifier = Modifier.weight(1.1f),
+                        colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color.DarkGray)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = null,
+                                tint = MintGreen,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "SLOTS REMAIN.",
+                                color = GrayText,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "$remainingSlots left",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "(${tournament.slotsFilled} filled)",
+                                color = Color.LightGray,
+                                fontSize = 9.sp
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // Per Kill & Rank Allocation Info
+            if (tournament.perKillPrize > 0.0 || tournament.rankPrizes.isNotBlank()) {
+                item {
+                    Text(
+                        text = "Prize Description",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color.DarkGray),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            if (tournament.perKillPrize > 0.0) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text(
-                                        text = "Room ID: ${tournament.roomId}",
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                    IconButton(
-                                        onClick = {
-                                            clipboardManager.setText(AnnotatedString(tournament.roomId))
-                                            Toast.makeText(context, "Room ID Copied!", Toast.LENGTH_SHORT).show()
-                                        },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ContentCopy,
-                                            contentDescription = "Copy ID",
-                                            tint = NeonGold,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
+                                    Text("Reward Per Kill", color = GrayText, fontSize = 13.sp)
+                                    Text("Rs.${tournament.perKillPrize}", color = NeonGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                 }
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Password: ${tournament.roomPassword}",
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                    IconButton(
-                                        onClick = {
-                                            clipboardManager.setText(AnnotatedString(tournament.roomPassword))
-                                            Toast.makeText(context, "Password Copied!", Toast.LENGTH_SHORT).show()
-                                        },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ContentCopy,
-                                            contentDescription = "Copy Password",
-                                            tint = NeonGold,
-                                            modifier = Modifier.size(16.dp)
-                                        )
+                            }
+                            if (tournament.perKillPrize > 0.0 && tournament.rankPrizes.isNotBlank()) {
+                                Divider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 8.dp))
+                            }
+                            if (tournament.rankPrizes.isNotBlank()) {
+                                Text("Rank Allocation", color = GrayText, fontSize = 13.sp, modifier = Modifier.padding(bottom = 4.dp))
+                                val ranks = tournament.rankPrizes.split(",")
+                                ranks.forEachIndexed { index, prizeStr ->
+                                    val safePrize = prizeStr.trim()
+                                    if (safePrize.isNotBlank()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("#${index + 1} Rank Prizes", color = Color.LightGray, fontSize = 12.sp)
+                                            Text("Rs.$safePrize", color = MintGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     }
                                 }
                             }
@@ -1571,195 +1620,279 @@ fun TournamentCard(
                     }
                 }
             }
-        }
-    }
 
-    if (showDetailsModal) {
-        androidx.compose.ui.window.Dialog(onDismissRequest = { showDetailsModal = false }) {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF0B121E)),
-                border = BorderStroke(1.5.dp, Color(0xFF00B4D8)),
-                modifier = Modifier.fillMaxWidth().padding(12.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            // Credentials copy box if user joined
+            if (isUserJoined) {
+                item {
                     Text(
-                        text = tournament.title,
+                        text = "Lobby Credentials",
                         color = Color.White,
-                        fontSize = 18.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.align(Alignment.Start)
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    
-                    Row(
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, NeonOrange.copy(alpha = 0.4f)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFF121B2C), RoundedCornerShape(10.dp))
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .padding(bottom = 16.dp)
                     ) {
-                        Column {
-                            Text("PRIZE POOL", color = Color(0xFF90E0EF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            Text("Rs.${tournament.prizePool}", color = NeonGold, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                        }
-                        Column {
-                            Text("ENTRY FEE", color = Color(0xFF90E0EF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            Text(if (tournament.entryFee == 0.0) "FREE" else "Rs.${tournament.entryFee}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Column {
-                            Text("SLOTS FILLED", color = Color(0xFF90E0EF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            Text("${tournament.slotsFilled}/${tournament.totalSlots}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = "Rules & Match Guidelines:",
-                        color = Color(0xFF90E0EF),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.align(Alignment.Start)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = tournament.description.ifBlank { "No special rules stated for this arena lobby. Standard rules apply." },
-                        color = Color.LightGray,
-                        fontSize = 12.sp,
-                        modifier = Modifier.align(Alignment.Start),
-                        lineHeight = 16.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    Text(
-                        text = "LOBBY ACCESS CREDENTIALS",
-                        color = Color(0xFF0077B6),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 1.sp,
-                        modifier = Modifier.align(Alignment.Start)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0A1E3F)),
-                        border = BorderStroke(1.dp, Color(0xFF00B4D8)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            if (isUserJoined) {
-                                if (isScheduleUnlockReady) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "ROOM ID: ${tournament.roomId.ifBlank { "Lobby being configured..." }}",
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                        if (tournament.roomId.isNotBlank()) {
-                                            IconButton(
-                                                onClick = {
-                                                    clipboardManager.setText(AnnotatedString(tournament.roomId))
-                                                    Toast.makeText(context, "Room ID Copied!", Toast.LENGTH_SHORT).show()
-                                                },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.ContentCopy,
-                                                    contentDescription = "Copy ID",
-                                                    tint = Color(0xFF00B4D8),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            if (isScheduleUnlockReady) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Room ID: ${tournament.roomId.ifBlank { "Unassigned" }}",
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    if (tournament.roomId.isNotBlank()) {
+                                        IconButton(
+                                            onClick = {
+                                                clipboardManager.setText(AnnotatedString(tournament.roomId))
+                                                Toast.makeText(context, "Room ID Copied!", Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ContentCopy,
+                                                contentDescription = "Copy",
+                                                tint = NeonGold,
+                                                modifier = Modifier.size(16.dp)
+                                            )
                                         }
                                     }
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "PASSWORD: ${tournament.roomPassword.ifBlank { "Lobby being configured..." }}",
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            fontFamily = FontFamily.Monospace
-                                        )
-                                        if (tournament.roomPassword.isNotBlank()) {
-                                            IconButton(
-                                                onClick = {
-                                                    clipboardManager.setText(AnnotatedString(tournament.roomPassword))
-                                                    Toast.makeText(context, "Password Copied!", Toast.LENGTH_SHORT).show()
-                                                },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.ContentCopy,
-                                                    contentDescription = "Copy Pass",
-                                                    tint = Color(0xFF00B4D8),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Room Pass: ${tournament.roomPassword.ifBlank { "Unassigned" }}",
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    if (tournament.roomPassword.isNotBlank()) {
+                                        IconButton(
+                                            onClick = {
+                                                clipboardManager.setText(AnnotatedString(tournament.roomPassword))
+                                                Toast.makeText(context, "Password Copied!", Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ContentCopy,
+                                                contentDescription = "Copy",
+                                                tint = NeonGold,
+                                                modifier = Modifier.size(16.dp)
+                                            )
                                         }
-                                    }
-                                } else {
-                                    val diffMinutes = (timeToMatch / 60000)
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 8.dp)) {
-                                        Icon(imageVector = Icons.Default.Lock, contentDescription = "Locked", tint = Color(0xFF00B4D8), modifier = Modifier.size(24.dp))
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(
-                                            text = "Match credentials unlock in $diffMinutes minutes",
-                                            color = Color(0xFF90E0EF),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "Come back 10 minutes prior to scheduled start time.",
-                                            color = Color.Gray,
-                                            fontSize = 10.sp
-                                        )
                                     }
                                 }
                             } else {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 8.dp)) {
-                                    Icon(imageVector = Icons.Default.Lock, contentDescription = "Join Required", tint = Color.Gray, modifier = Modifier.size(24.dp))
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = "Please Join the Tournament first!",
-                                        color = Color.LightGray,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
+                                val remainingMins = (timeToMatch / 60000).coerceAtLeast(0)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = "Locked",
+                                        tint = GrayText,
+                                        modifier = Modifier.size(16.dp)
                                     )
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "Only registered participants can access lobby keys.",
-                                        color = Color.Gray,
-                                        fontSize = 10.sp
+                                        text = "Lobby Credentials lock lifts in $remainingMins minutes. (10 mins prior to match)",
+                                        color = GrayText,
+                                        fontSize = 11.sp,
+                                        lineHeight = 15.sp
                                     )
                                 }
                             }
                         }
                     }
+                }
+            }
 
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Button(
-                        onClick = { showDetailsModal = false },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0077B6)),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth().height(42.dp)
+            // Ads watch verification if required and not joined yet
+            if (!isUserJoined && tournament.adsRequired > 0) {
+                item {
+                    Text(
+                        text = "Registration Task Required",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, NeonGold.copy(alpha = 0.3f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp)
                     ) {
-                        Text("CLOSE OVERLAY", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                text = "This lobby requires viewing sponsored videos to unlock the registration ticket.",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Video Views: $adsWatchedForRegister / ${tournament.adsRequired}",
+                                    color = NeonGold,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Button(
+                                    onClick = {
+                                        if (remainingCd > 0) {
+                                            Toast.makeText(context, "Ad cooldown active! Clean registration rules apply.", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            val activity = context.findActivity()
+                                            if (activity != null) {
+                                                viewModel.showUnityRewardedAd(activity, tournament.id) { success ->
+                                                    if (success) {
+                                                        adsWatchedForRegister++
+                                                        Toast.makeText(context, "Ad completed! ($adsWatchedForRegister/${tournament.adsRequired})", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            } else {
+                                                viewModel.simulateAdWatch(tournament.id)
+                                                adsWatchedForRegister++
+                                                Toast.makeText(context, "Ad view tracked automatically! ($adsWatchedForRegister/${tournament.adsRequired})", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
+                                    shape = RoundedCornerShape(8.dp),
+                                    enabled = remainingCd == 0 && adsWatchedForRegister < tournament.adsRequired
+                                ) {
+                                    val adLabel = if (remainingCd > 0) "WAIT COOLDOWN" else "PLAY REWARDED VIDEO"
+                                    Text(text = adLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Lobby Description Box
+            item {
+                Text(
+                    text = "Lobby Description",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color.DarkGray),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
+                    Text(
+                        text = tournament.description.ifBlank { "Admin assembled tournament for Anu Battle league." },
+                        color = Color.LightGray,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.padding(14.dp)
+                    )
+                }
+            }
+
+            // Rewards Index Box
+            item {
+                Text(
+                    text = "Rewards Index",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color.DarkGray),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(text = "Kill Premium:", color = GrayText, fontSize = 12.sp)
+                            Text(text = "Rs.10.0 per single kill", color = NeonGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        HorizontalDivider(color = Color.DarkGray, thickness = 1.dp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = "Placement Allocations:", color = GrayText, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "• Rank 1: 50% of Pool (Rs.${tournament.prizePool * 0.5})\n" +
+                                   "• Rank 2: 30% of Pool (Rs.${tournament.prizePool * 0.3})\n" +
+                                   "• Rank 3: 20% of Pool (Rs.${tournament.prizePool * 0.2})",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+
+            // Terms & Standing Rules Box
+            item {
+                Text(
+                    text = "Terms & Arena Standing Rules",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color.DarkGray),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "1. No hacks or mods are allowed. Doing so results in a permanent ban.\n" +
+                                   "2. Teaming is strictly banned. Players caught will be disqualified immediately.\n" +
+                                   "3. Join custom lobby 10 minutes prior to match schedule to secure placement.",
+                            color = Color.LightGray,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
                     }
                 }
             }
@@ -1906,75 +2039,7 @@ fun StoreScreen(viewModel: EsportsViewModel) {
         }
 
         item {
-            Text(
-                text = "Buy Coins (Voucher Packages)",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 24.dp, bottom = 12.dp)
-            )
-        }
-
-        // Coins Voucher Packages from specification
-        val packages = listOf(
-            VoucherPackage("Champion Special", "Huge pro stack of 250 coins with double multipliers", 100.0, 250.0, 60.0),
-            VoucherPackage("Coins Pack L", "Clash bundle of 120 coins", 50.0, 120.0, 25.0),
-            VoucherPackage("Coins Pack M", "Value pack of 55 coins + bonus credits", 25.0, 55.0, 8.0),
-            VoucherPackage("Coins Pack S", "Credit 20 coins for instant play setup", 10.0, 20.0, 2.0)
-        )
-
-        items(packages) { pack ->
-            Card(
-                colors = CardDefaults.cardColors(containerColor = CharcoalCard),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 6.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = pack.title,
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = pack.description,
-                            color = GrayText,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "★ Yields ${pack.coinsYield.toInt()} Coins (+${pack.bonusYield.toInt()} Bonus)",
-                            color = NeonGold,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    Button(
-                        onClick = {
-                            viewModel.buyCoins(pack.title, pack.price, pack.coinsYield, pack.bonusYield)
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = "Rs.${pack.price}",
-                            color = CharcoalBg,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                    }
-                }
-            }
+            Spacer(modifier = Modifier.height(16.dp))
         }
 
         item {
@@ -2240,29 +2305,33 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
             ) {
                 val rewardsList = dbDailyRewards
                 val now = System.currentTimeMillis()
-                var currentDay = if (now - (user?.lastDailyRewardTime ?: 0L) > (2 * 24 * 60 * 60 * 1000L)) 1 else (user?.dailyRewardDay ?: 1)
+                var currentDay = user?.dailyRewardDay ?: 1
+                if (now - (user?.lastDailyRewardTime ?: 0L) > (2 * 24 * 60 * 60 * 1000L) && (user?.lastDailyRewardTime ?: 0L) > 0) {
+                    currentDay = 1
+                }
                 
                 for (day in 1..7) {
-                    val claimed = (day < currentDay) || (day == currentDay && now - (user?.lastDailyRewardTime ?: 0L) < (24 * 60 * 60 * 1000L))
+                    val claimed = day < currentDay
                     val isToday = day == currentDay
-                    val enabled = isToday && !claimed
+                    // The user can claim if it's 'today' and 24 hours have passed since last claim
+                    val canClaimToday = isToday && (now - (user?.lastDailyRewardTime ?: 0L) >= (24 * 60 * 60 * 1000L) || (user?.lastDailyRewardTime ?: 0L) == 0L)
                     
                     Card(
                         modifier = Modifier
                             .width(84.dp)
                             .padding(end = 8.dp)
-                            .clickable(enabled = enabled) {
+                            .clickable(enabled = canClaimToday) {
                                 viewModel.claimDailyReward { error ->
                                     Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
                                 }
                             },
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (claimed) MintGreen.copy(alpha = 0.2f) else if (isToday) NeonGold.copy(alpha=0.1f) else CharcoalCard
+                            containerColor = if (claimed) MintGreen.copy(alpha = 0.2f) else if (canClaimToday) NeonGold.copy(alpha=0.1f) else CharcoalCard
                         ),
                         border = BorderStroke(
                             1.dp,
-                            if (claimed) MintGreenBorder else if(isToday) NeonGold else Color.DarkGray
+                            if (claimed) MintGreenBorder else if(canClaimToday) NeonGold else Color.DarkGray
                         )
                     ) {
                         Column(
@@ -2296,15 +2365,15 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
                                 )
                             } else {
                                 Icon(
-                                    imageVector = Icons.Default.Star,
+                                    imageVector = if (canClaimToday) Icons.Default.Star else Icons.Default.Lock,
                                     contentDescription = "Coins Reward",
-                                    tint = NeonGold,
+                                    tint = if (canClaimToday) NeonGold else GrayText,
                                     modifier = Modifier.size(24.dp)
                                 )
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Text(
                                     text = "${rewardsList.getOrElse(day - 1) { 5.0 }.toInt()} Coins",
-                                    color = NeonGold,
+                                    color = if (canClaimToday) NeonGold else GrayText,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -2350,7 +2419,149 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        item {
+            Text(
+                text = "Daily Tasks & Challenges",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 24.dp, bottom = 4.dp)
+            )
+            Text(
+                text = "Complete challenges to earn reward coins directly into your wallet.",
+                color = GrayText,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+        }
+
+        if (dailyTasks.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = CharcoalCard)
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                        Text("No active tasks available. Check back soon!", color = GrayText, fontSize = 12.sp)
+                    }
+                }
+            }
+        } else {
+            items(dailyTasks) { task ->
+                val progress = taskProgress.find { it.taskId == task.id }
+                val currentVal = progress?.currentValue ?: 0
+                val isClaimed = progress?.claimed == true || currentVal >= task.targetValue
+                val percentProgress = if (task.targetValue > 0) currentVal.toFloat() / task.targetValue.toFloat() else 0f
+                val clampedPercent = percentProgress.coerceIn(0f, 1f)
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    border = BorderStroke(1.dp, if (isClaimed) MintGreen.copy(alpha=0.3f) else Color.DarkGray)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(
+                                    if (isClaimed) MintGreen.copy(alpha = 0.15f) else Color.DarkGray,
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isClaimed) Icons.Default.CheckCircle else Icons.Default.Star,
+                                contentDescription = null,
+                                tint = if (isClaimed) MintGreen else Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = task.title,
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = "+${task.coinReward.toInt()} Coins",
+                                    color = NeonGold,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            LinearProgressIndicator(
+                                progress = { clampedPercent },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(3.dp)),
+                                color = if (isClaimed) MintGreen else NeonOrange,
+                                trackColor = Color.DarkGray,
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Progress: $currentVal / ${task.targetValue}",
+                                    color = GrayText,
+                                    fontSize = 11.sp
+                                )
+                                if (isClaimed) {
+                                    Text(
+                                        text = "CLAIMED",
+                                        color = MintGreen,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                } else {
+                                    Text(
+                                        text = "Tap to Complete",
+                                        color = NeonOrange,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clickable {
+                                            viewModel.saveTaskProgress(task.id, 1)
+                                            Toast.makeText(context, "Progress updated!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Spacer(modifier = Modifier.height(24.dp))
         }
     } // end LazyColumn
     } // end Column wrapper
@@ -2370,6 +2581,49 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
     var gameUidInput by remember { mutableStateOf(user.gameUid) }
 
     var redeemCode by remember { mutableStateOf("") }
+    var showTxHistory by remember { mutableStateOf(false) }
+
+    if (showTxHistory) {
+        val txs by viewModel.transactions.collectAsStateWithLifecycle()
+        val userTxs = txs.filter { it.emailKey == user.emailKey }
+        Dialog(onDismissRequest = { showTxHistory = false }) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CharcoalBg),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 600.dp).padding(vertical = 24.dp),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color.DarkGray)
+            ) {
+                Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                    Text("Transaction History", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (userTxs.isEmpty()) {
+                        Text("No transactions found.", color = GrayText, fontSize = 14.sp)
+                    } else {
+                        LazyColumn {
+                            items(userTxs) { tx ->
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
+                                        Text(text = tx.type, color = NeonGold, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(text = tx.details, color = Color.White, fontSize = 12.sp)
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text(text = "Amount: Rs.${tx.amount} | Coins: ${tx.coins.toInt()}", color = MintGreen, fontSize = 12.sp)
+                                            val sdf = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault())
+                                            Text(text = sdf.format(Date(tx.timestamp)), color = GrayText, fontSize = 10.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -2424,7 +2678,7 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
                     label = "Earnings",
                     value = "Rs.${String.format("%.1f", user.mainWallet + user.winningWallet)}"
                 )
-                StatColumn(label = "Referrals", value = "0")
+                StatColumn(label = "Referrals", value = "${user.totalReferrals}")
             }
         }
 
@@ -2450,6 +2704,13 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(8.dp))
             ProfileTile(
+                title = "Transaction History",
+                subtitle = "View deposits, withdrawals, and tournament logs",
+                icon = Icons.Default.ListAlt,
+                onClick = { showTxHistory = true }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            ProfileTile(
                 title = "My Match History",
                 subtitle = "View details about your finished lobby scores",
                 icon = Icons.Default.History,
@@ -2460,10 +2721,10 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
             Spacer(modifier = Modifier.height(8.dp))
             ProfileTile(
                 title = "Refer & Claim Rewards",
-                subtitle = "Check unique code options and redeem codes",
+                subtitle = "Share your unique code: ${user.referCode}",
                 icon = Icons.Default.Share,
                 onClick = {
-                    Toast.makeText(context, "Your referral code is: ${user.name.uppercase()}_77", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Your referral code is: ${user.referCode}", Toast.LENGTH_LONG).show()
                 }
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -2759,7 +3020,14 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
                             Text(text = "Pocket: Rs.${u.mainWallet}", color = Color.White, fontSize = 11.sp)
                             Text(text = "Bonus: Rs.${u.bonusWallet}", color = Color.White, fontSize = 11.sp)
                             Text(text = "Winnings: Rs.${u.winningWallet}", color = Color.White, fontSize = 11.sp)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
                             Text(text = "Coins: ${u.coins.toInt()}", color = NeonGold, fontSize = 11.sp)
+                            Text(text = "Referrals: ${u.totalReferrals}", color = MintGreen, fontSize = 11.sp)
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
@@ -2834,6 +3102,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
     var mapType by remember { mutableStateOf("Bermuda") }
     var entryFee by remember { mutableStateOf("") }
     var prizePool by remember { mutableStateOf("") }
+    var perKillPrize by remember { mutableStateOf("") }
+    var rankPrizes by remember { mutableStateOf("") }
     var totalSlots by remember { mutableStateOf("100") }
     var adsRequired by remember { mutableStateOf("3") }
     var roomId by remember { mutableStateOf("") }
@@ -2884,6 +3154,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                 mapType = "Bermuda"
                 entryFee = ""
                 prizePool = ""
+                perKillPrize = ""
+                rankPrizes = ""
                 totalSlots = "100"
                 adsRequired = "3"
                 roomId = ""
@@ -2934,6 +3206,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                                     mapType = t.mapType
                                     entryFee = t.entryFee.toString()
                                     prizePool = t.prizePool.toString()
+                                    perKillPrize = t.perKillPrize.toString()
+                                    rankPrizes = t.rankPrizes
                                     totalSlots = t.totalSlots.toString()
                                     adsRequired = t.adsRequired.toString()
                                     roomId = t.roomId
@@ -3057,9 +3331,28 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                         OutlinedTextField(
                             value = prizePool,
                             onValueChange = { prizePool = it },
-                            label = { Text("Prize Pool (Rs.)") },
+                            label = { Text("Total Prize Pool (Rs.)") },
                             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = perKillPrize,
+                            onValueChange = { perKillPrize = it },
+                            label = { Text("Per Kill Reward (Rs.) Optional") },
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = rankPrizes,
+                            onValueChange = { rankPrizes = it },
+                            label = { Text("Rank Allocations e.g (100,50,20) Optional") },
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
                             modifier = Modifier.fillMaxWidth()
                         )
                     } else {
@@ -3168,6 +3461,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                                         mapType = mapType,
                                         entryFee = finalEntryFee,
                                         prizePool = finalPrizePool,
+                                        perKillPrize = perKillPrize.toDoubleOrNull() ?: 0.0,
+                                        rankPrizes = rankPrizes,
                                         slotsFilled = original?.slotsFilled ?: 0,
                                         totalSlots = totalSlots.toIntOrNull() ?: 100,
                                         adsRequired = finalAdsRequired,
@@ -3394,6 +3689,9 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
     val minWithdraw by viewModel.minWithdraw.collectAsStateWithLifecycle()
     val dbDailyRewards by viewModel.dbDailyRewards.collectAsStateWithLifecycle()
 
+    val referCoinReward by viewModel.referCoinReward.collectAsStateWithLifecycle()
+    val referCashReward by viewModel.referCashReward.collectAsStateWithLifecycle()
+
     var inputGameId by remember { mutableStateOf(gameId) }
     var inputRewardedId by remember { mutableStateOf(rewardedId) }
     var inputInterstitialId by remember { mutableStateOf(interstitialId) }
@@ -3403,6 +3701,9 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
     var inputJcNum by remember { mutableStateOf(jcNum) }
     var inputMinWithdraw by remember { mutableStateOf(minWithdraw) }
 
+    var inputReferCoin by remember { mutableStateOf(referCoinReward.toString()) }
+    var inputReferCash by remember { mutableStateOf(referCashReward.toString()) }
+
     var inputR1 by remember { mutableStateOf("5.0") }
     var inputR2 by remember { mutableStateOf("5.0") }
     var inputR3 by remember { mutableStateOf("5.0") }
@@ -3411,7 +3712,7 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
     var inputR6 by remember { mutableStateOf("5.0") }
     var inputR7 by remember { mutableStateOf("15.0") }
 
-    LaunchedEffect(gameId, rewardedId, interstitialId, epTitle, epNum, jcTitle, jcNum, minWithdraw, dbDailyRewards) {
+    LaunchedEffect(gameId, rewardedId, interstitialId, epTitle, epNum, jcTitle, jcNum, minWithdraw, dbDailyRewards, referCoinReward, referCashReward) {
         inputGameId = gameId
         inputRewardedId = rewardedId
         inputInterstitialId = interstitialId
@@ -3420,6 +3721,8 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
         inputJcTitle = jcTitle
         inputJcNum = jcNum
         inputMinWithdraw = minWithdraw
+        inputReferCoin = referCoinReward.toString()
+        inputReferCash = referCashReward.toString()
         
         inputR1 = dbDailyRewards.getOrNull(0)?.toString() ?: "5.0"
         inputR2 = dbDailyRewards.getOrNull(1)?.toString() ?: "5.0"
@@ -3475,6 +3778,15 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
         OutlinedTextField(value = inputR7, onValueChange = { inputR7 = it }, label = { Text("Day 7 (Grand Bonus)") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth())
 
         Spacer(modifier = Modifier.height(24.dp))
+        Text(text = "Referral Bonus Allocation", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(14.dp))
+        
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(value = inputReferCoin, onValueChange = { inputReferCoin = it }, label = { Text("Per Refer Coins") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.weight(1f))
+            OutlinedTextField(value = inputReferCash, onValueChange = { inputReferCash = it }, label = { Text("Per Refer Cash (Bonus Wallet)") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.weight(1f))
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = {
@@ -3485,11 +3797,14 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
                 val r5 = inputR5.toDoubleOrNull() ?: 5.0
                 val r6 = inputR6.toDoubleOrNull() ?: 5.0
                 val r7 = inputR7.toDoubleOrNull() ?: 15.0
+                
+                val referCoin = inputReferCoin.toDoubleOrNull() ?: 0.0
+                val referCash = inputReferCash.toDoubleOrNull() ?: 0.0
 
                 viewModel.adminSetPlatformSettings(
                     inputGameId, inputRewardedId, inputInterstitialId,
                     inputEpNum, inputEpTitle, inputJcNum, inputJcTitle, inputMinWithdraw,
-                    r1, r2, r3, r4, r5, r6, r7
+                    r1, r2, r3, r4, r5, r6, r7, referCoin, referCash
                 )
                 Toast.makeText(context, "Settings Updated successfully!", Toast.LENGTH_SHORT).show()
             },

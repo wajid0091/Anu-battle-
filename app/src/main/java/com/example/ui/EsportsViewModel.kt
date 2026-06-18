@@ -83,6 +83,12 @@ class EsportsViewModel(
     private val _minWithdraw = MutableStateFlow("50")
     val minWithdraw: StateFlow<String> = _minWithdraw.asStateFlow()
 
+    private val _referCoinReward = MutableStateFlow(0.0)
+    val referCoinReward: StateFlow<Double> = _referCoinReward.asStateFlow()
+
+    private val _referCashReward = MutableStateFlow(0.0)
+    val referCashReward: StateFlow<Double> = _referCashReward.asStateFlow()
+
     private val _dbDailyRewards = MutableStateFlow(listOf(5.0, 5.0, 5.0, 10.0, 5.0, 5.0, 15.0))
     val dbDailyRewards: StateFlow<List<Double>> = _dbDailyRewards.asStateFlow()
 
@@ -159,7 +165,21 @@ class EsportsViewModel(
                     val r5 = snapshot.child("daily_reward_5").getValue(Double::class.java) ?: snapshot.child("daily_reward_5").getValue(Long::class.java)?.toDouble() ?: 5.0
                     val r6 = snapshot.child("daily_reward_6").getValue(Double::class.java) ?: snapshot.child("daily_reward_6").getValue(Long::class.java)?.toDouble() ?: 5.0
                     val r7 = snapshot.child("daily_reward_7").getValue(Double::class.java) ?: snapshot.child("daily_reward_7").getValue(Long::class.java)?.toDouble() ?: 15.0
+                    
+                    _referCoinReward.value = snapshot.child("refer_coin_reward").getValue(Double::class.java) ?: snapshot.child("refer_coin_reward").getValue(Long::class.java)?.toDouble() ?: 0.0
+                    _referCashReward.value = snapshot.child("refer_cash_reward").getValue(Double::class.java) ?: snapshot.child("refer_cash_reward").getValue(Long::class.java)?.toDouble() ?: 0.0
+
                     _dbDailyRewards.value = listOf(r1, r2, r3, r4, r5, r6, r7)
+
+                    viewModelScope.launch(Dispatchers.IO) {
+                        try {
+                            val cfg = dao.getAppConfigSync() ?: AppConfigEntity()
+                            val updatedParam = cfg.copy(referCoinReward = _referCoinReward.value, referCashReward = _referCashReward.value)
+                            dao.saveAppConfig(updatedParam)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
 
                     // Dynamic automatic pre-initialization of Unity Ads with admin configurations
                     preInitializeUnityAds(_unityGameId.value)
@@ -307,6 +327,8 @@ class EsportsViewModel(
         _isLoading.value = true
         _loginError.value = null
 
+        val deviceId = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: UUID.randomUUID().toString()
+
         // Check if user already exists
         FirebaseDatabase.getInstance().getReference("users").child(emailKey)
             .addListenerForSingleValueEvent(object : ValueEventListener {
@@ -315,44 +337,118 @@ class EsportsViewModel(
                         _isLoading.value = false
                         _loginError.value = "Email is already registered. Please login!"
                     } else {
-                        // Spawn absolutely pristine, zero-balance account
-                        val isUserAdmin = email.trim().lowercase().contains("admin") || email.trim().lowercase() == "modspak4@gmail.com"
-                        val newUser = UserEntity(
-                            emailKey = emailKey,
-                            name = name.trim(),
-                            email = email.trim(),
-                            mainWallet = 0.0,
-                            bonusWallet = 0.0,
-                            winningWallet = 0.0,
-                            coins = 0.0,
-                            matchesPlayed = 0,
-                            matchesWon = 0,
-                            banned = false,
-                            isAdmin = isUserAdmin,
-                            password = password,
-                            gameUid = gameUid.trim(),
-                            referCode = referCode.trim()
-                        )
-
-                        syncManager.saveUserDirectly(newUser)
-
-                        // Save transaction history log of sign-up
-                        val welcomeTx = TransactionRecordEntity(
-                            id = "signup_${UUID.randomUUID()}",
-                            emailKey = emailKey,
-                            type = "SIGNUP",
-                            amount = 0.0,
-                            coins = 0.0,
-                            status = "SUCCESS",
-                            timestamp = System.currentTimeMillis(),
-                            details = "Pristine onboarding register complete"
-                        )
-                        syncManager.saveTransactionDirectly(welcomeTx)
-
+                        // Process the referral code if valid, check device limit
                         viewModelScope.launch(Dispatchers.IO) {
+                            var validReferralUserKey = ""
+                            var grantReferBonus = false
+                            
+                            if (referCode.isNotBlank()) {
+                                try {
+                                    val dbRef = FirebaseDatabase.getInstance().getReference("users")
+                                    val snap = dbRef.get().await()
+                                    var referee: UserEntity? = null
+                                    
+                                    for (child in snap.children) {
+                                        val u = child.getValue(UserEntity::class.java)
+                                        if (u != null && u.referCode == referCode.trim()) {
+                                            referee = u
+                                            break
+                                        }
+                                    }
+                                    
+                                    if (referee != null && referee.deviceId != deviceId) {
+                                        // Count accounts registered on this device ID so far
+                                        var deviceAccountsCount = 0
+                                        for (child in snap.children) {
+                                            val uD = child.child("deviceId").getValue(String::class.java)
+                                            if (uD == deviceId) deviceAccountsCount++
+                                        }
+                                        
+                                        // If more than 1 existing account, limit reached (allowed: first 2 total)
+                                        if (deviceAccountsCount < 2) {
+                                            validReferralUserKey = referee.emailKey
+                                            grantReferBonus = true
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            }
+                            
+                            // Spawn absolutely pristine, zero-balance account
+                            val isUserAdmin = email.trim().lowercase().contains("admin") || email.trim().lowercase() == "modspak4@gmail.com"
+                            val newUser = UserEntity(
+                                emailKey = emailKey,
+                                name = name.trim(),
+                                email = email.trim(),
+                                mainWallet = 0.0,
+                                bonusWallet = 0.0,
+                                winningWallet = 0.0,
+                                coins = 0.0,
+                                matchesPlayed = 0,
+                                matchesWon = 0,
+                                banned = false,
+                                isAdmin = isUserAdmin,
+                                password = password,
+                                gameUid = gameUid.trim(),
+                                referCode = "${name.trim()}_${(10..99).random()}", // generated self refer code
+                                referredBy = validReferralUserKey,
+                                deviceId = deviceId,
+                                totalReferrals = 0
+                            )
+
+                            syncManager.saveUserDirectly(newUser)
+
+                            // Save transaction history log of sign-up
+                            val welcomeTx = TransactionRecordEntity(
+                                id = "signup_${UUID.randomUUID()}",
+                                emailKey = emailKey,
+                                type = "SIGNUP",
+                                amount = 0.0,
+                                coins = 0.0,
+                                status = "SUCCESS",
+                                timestamp = System.currentTimeMillis(),
+                                details = "Pristine onboarding register complete"
+                            )
+                            syncManager.saveTransactionDirectly(welcomeTx)
+                            
+                            if (grantReferBonus && validReferralUserKey.isNotBlank()) {
+                                // Add refer coins/bonus from config
+                                val config = dao.getAppConfigSync() ?: AppConfigEntity()
+                                // Credit referee
+                                FirebaseDatabase.getInstance().getReference("users").child(validReferralUserKey).get().addOnSuccessListener { rSnap ->
+                                    val rUser = rSnap.getValue(UserEntity::class.java)
+                                    if (rUser != null) {
+                                        val updatedRef = rUser.copy(
+                                            totalReferrals = rUser.totalReferrals + 1,
+                                            coins = rUser.coins + config.referCoinReward,
+                                            bonusWallet = rUser.bonusWallet + config.referCashReward
+                                        )
+                                        syncManager.saveUserDirectly(updatedRef)
+                                        
+                                        if (config.referCoinReward > 0 || config.referCashReward > 0) {
+                                            val refTx = TransactionRecordEntity(
+                                                id = "refer_${UUID.randomUUID()}",
+                                                emailKey = rUser.emailKey,
+                                                type = "REFERRAL",
+                                                amount = config.referCashReward,
+                                                coins = config.referCoinReward,
+                                                status = "SUCCESS",
+                                                timestamp = System.currentTimeMillis(),
+                                                details = "Referral bonus for signing up ${newUser.name}"
+                                            )
+                                            syncManager.saveTransactionDirectly(refTx)
+                                        }
+                                    }
+                                }
+                            }
+
                             dao.insertUser(newUser)
                             sharedPrefs.edit().putString("logged_in_email_key", emailKey).apply()
-                            loadUserSession(emailKey)
+                            
+                            withContext(Dispatchers.Main) {
+                                loadUserSession(emailKey)
+                            }
                         }
                     }
                 }
@@ -910,7 +1006,8 @@ class EsportsViewModel(
     fun adminSetPlatformSettings(
         gameId: String, rewardedId: String, interstitialId: String,
         epNum: String, epName: String, jcNum: String, jcName: String, minW: String,
-        r1: Double, r2: Double, r3: Double, r4: Double, r5: Double, r6: Double, r7: Double
+        r1: Double, r2: Double, r3: Double, r4: Double, r5: Double, r6: Double, r7: Double,
+        referCoin: Double, referCash: Double
     ) {
         if (_currentUser.value?.isAdmin == true) {
             val settings = mapOf(
@@ -928,7 +1025,9 @@ class EsportsViewModel(
                 "daily_reward_4" to r4,
                 "daily_reward_5" to r5,
                 "daily_reward_6" to r6,
-                "daily_reward_7" to r7
+                "daily_reward_7" to r7,
+                "refer_coin_reward" to referCoin,
+                "refer_cash_reward" to referCash
             )
             syncManager.settingsRef.setValue(settings)
         }

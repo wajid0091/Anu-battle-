@@ -19,6 +19,9 @@ data class UserEntity(
     val password: String = "",
     val gameUid: String = "",
     val referCode: String = "",
+    val referredBy: String = "",
+    val deviceId: String = "",
+    val totalReferrals: Int = 0,
     val inboxMessage: String = "",
     val lastGameUidChangeTime: Long = 0L,
     val joinedTournaments: String = "",
@@ -34,6 +37,8 @@ data class TournamentEntity(
     val mapType: String,
     val entryFee: Double,
     val prizePool: Double,
+    val perKillPrize: Double = 0.0,
+    val rankPrizes: String = "", // comma-separated like "1000,500,250"
     val slotsFilled: Int,
     val totalSlots: Int,
     val adsRequired: Int,
@@ -43,6 +48,13 @@ data class TournamentEntity(
     val roomPassword: String = "",
     val bannerUrl: String = "",
     val description: String = ""
+)
+
+@Entity(tableName = "app_config")
+data class AppConfigEntity(
+    @PrimaryKey val id: String = "config",
+    val referCoinReward: Double = 0.0,
+    val referCashReward: Double = 0.0
 )
 
 @Entity(tableName = "promo_sliders")
@@ -186,6 +198,16 @@ interface EsportsDao {
     @Query("DELETE FROM transaction_records")
     suspend fun clearTransactions()
 
+    // Config
+    @Query("SELECT * FROM app_config WHERE id = 'config'")
+    fun getAppConfigFlow(): Flow<AppConfigEntity?>
+
+    @Query("SELECT * FROM app_config WHERE id = 'config'")
+    suspend fun getAppConfigSync(): AppConfigEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveAppConfig(config: AppConfigEntity)
+
     // Promo Sliders
     @Query("SELECT * FROM promo_sliders WHERE active = 1")
     fun getActivePromoSlidersFlow(): Flow<List<PromoSliderEntity>>
@@ -205,9 +227,10 @@ interface EsportsDao {
         TaskProgressEntity::class,
         TransactionRecordEntity::class,
         PromoSliderEntity::class,
-        DiamondPackEntity::class
+        DiamondPackEntity::class,
+        AppConfigEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

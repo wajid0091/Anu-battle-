@@ -185,10 +185,10 @@ class FirebaseSyncManager(
                 if (!snapshot.exists()) {
                     val now = System.currentTimeMillis()
                     val initialTournaments = listOf(
-                        TournamentEntity("match_01", "BGMI Squad Master Series S1", "BGMI", "Sanhok", 30.0, 5000.0, 25, 25, 3, now - 3600000, "COMPLETED", "987213", "pass88"),
-                        TournamentEntity("match_02", "Apex Custom Legends Cup", "Apex Legends", "World's Edge", 25.0, 2500.0, 14, 20, 2, now + 1200000, "UPCOMING", "554611", "apex99"),
-                        TournamentEntity("match_03", "CODM Lone Wolf Duel League", "Call of Duty", "Nuketown", 20.0, 1500.0, 8, 8, 0, now + 3000000, "OPEN", "771212", "codm33"),
-                        TournamentEntity("match_04", "Free Fire Solo Survival Arena", "Free Fire", "Bermuda", 0.0, 1000.0, 12, 100, 4, now + 14400000, "OPEN", "112233", "ff99")
+                        TournamentEntity(id = "match_01", title = "BGMI Squad Master Series S1", gameType = "BGMI", mapType = "Sanhok", entryFee = 30.0, prizePool = 5000.0, slotsFilled = 25, totalSlots = 25, adsRequired = 3, scheduleTimeMillis = now - 3600000, status = "COMPLETED", roomId = "987213", roomPassword = "pass88"),
+                        TournamentEntity(id = "match_02", title = "Apex Custom Legends Cup", gameType = "Apex Legends", mapType = "World's Edge", entryFee = 25.0, prizePool = 2500.0, slotsFilled = 14, totalSlots = 20, adsRequired = 2, scheduleTimeMillis = now + 1200000, status = "UPCOMING", roomId = "554611", roomPassword = "apex99"),
+                        TournamentEntity(id = "match_03", title = "CODM Lone Wolf Duel League", gameType = "Call of Duty", mapType = "Nuketown", entryFee = 20.0, prizePool = 1500.0, slotsFilled = 8, totalSlots = 8, adsRequired = 0, scheduleTimeMillis = now + 3000000, status = "OPEN", roomId = "771212", roomPassword = "codm33"),
+                        TournamentEntity(id = "match_04", title = "Free Fire Solo Survival Arena", gameType = "Free Fire", mapType = "Bermuda", entryFee = 0.0, prizePool = 1000.0, slotsFilled = 12, totalSlots = 100, adsRequired = 4, scheduleTimeMillis = now + 14400000, status = "OPEN", roomId = "112233", roomPassword = "ff99")
                     )
                     for (t in initialTournaments) {
                         tournamentsRef.child(t.id).setValue(t)
@@ -309,7 +309,13 @@ private fun DataSnapshot.toUserEntity(): UserEntity? {
         val joinedTournaments = child("joinedTournaments").getValue(String::class.java) ?: ""
         val dailyRewardDay = child("dailyRewardDay").getValue(Int::class.java) ?: 1
         val lastDailyRewardTime = child("lastDailyRewardTime").getValue(Long::class.java) ?: 0L
-        UserEntity(emailKey, name, email, mainWallet, bonusWallet, winningWallet, coins, matchesPlayed, matchesWon, banned, isAdmin, password, gameUid, referCode, inboxMessage, lastGameUidChangeTime, joinedTournaments, dailyRewardDay, lastDailyRewardTime)
+        UserEntity(
+            emailKey = emailKey, name = name, email = email, mainWallet = mainWallet, bonusWallet = bonusWallet,
+            winningWallet = winningWallet, coins = coins, matchesPlayed = matchesPlayed, matchesWon = matchesWon,
+            banned = banned, isAdmin = isAdmin, password = password, gameUid = gameUid, referCode = referCode,
+            inboxMessage = inboxMessage, lastGameUidChangeTime = lastGameUidChangeTime,
+            joinedTournaments = joinedTournaments, dailyRewardDay = dailyRewardDay, lastDailyRewardTime = lastDailyRewardTime
+        )
     } catch (e: Exception) {
         null
     }
@@ -332,7 +338,12 @@ private fun DataSnapshot.toTournamentEntity(): TournamentEntity? {
         val roomPassword = child("roomPassword").getValue(String::class.java) ?: ""
         val bannerUrl = child("bannerUrl").getValue(String::class.java) ?: ""
         val description = child("description").getValue(String::class.java) ?: ""
-        TournamentEntity(id, title, gameType, mapType, entryFee, prizePool, slotsFilled, totalSlots, adsRequired, scheduleTimeMillis, status, roomId, roomPassword, bannerUrl, description)
+        TournamentEntity(
+            id = id, title = title, gameType = gameType, mapType = mapType, entryFee = entryFee, prizePool = prizePool,
+            slotsFilled = slotsFilled, totalSlots = totalSlots, adsRequired = adsRequired,
+            scheduleTimeMillis = scheduleTimeMillis, status = status, roomId = roomId, roomPassword = roomPassword,
+            bannerUrl = bannerUrl, description = description
+        )
     } catch (e: Exception) {
         null
     }
