@@ -1207,9 +1207,77 @@ class EsportsViewModel(
         }
     }
 
+    fun adminDistributeTournamentReward(tournamentId: String, distributions: Map<String, Double>, onComplete: (String) -> Unit) {
+        val admin = _currentUser.value ?: return
+        if (!admin.isAdmin) return
+        
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val t = tournaments.value.find { it.id == tournamentId }
+            if (t == null) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { onComplete("Tournament not found") }
+                return@launch
+            }
+            
+            // Distribute
+            distributions.forEach { (emailKey, amount) ->
+                val u = allUsers.value.find { it.emailKey == emailKey }
+                if (u != null) {
+                    val isCoin = t.prizeCurrency == "COINS"
+                    val updatedUser = if (isCoin) {
+                        u.copy(coins = u.coins + amount)
+                    } else {
+                        u.copy(winningWallet = u.winningWallet + amount)
+                    }
+                    syncManager.saveUserDirectly(updatedUser)
+                    
+                    // Transaction history
+                    val tx = com.example.data.TransactionRecordEntity(
+                        id = "tx_tourney_win_${t.id}_${u.emailKey}_${java.util.UUID.randomUUID()}",
+                        emailKey = u.emailKey,
+                        type = if(isCoin) "TOURNAMENT_WIN_COINS" else "TOURNAMENT_WIN_CASH",
+                        amount = if(isCoin) 0.0 else amount,
+                        coins = if(isCoin) amount else 0.0,
+                        status = "SUCCESS",
+                        timestamp = System.currentTimeMillis(),
+                        details = "Won ${if(isCoin) "${amount.toInt()} coins" else "Rs.${amount.toInt()}"} from tournament ${t.title}"
+                    )
+                    syncManager.saveTransactionDirectly(tx)
+                }
+            }
+            
+            val updatedTournament = t.copy(status = "COMPLETED")
+            syncManager.saveTournamentDirectly(updatedTournament)
+            
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { onComplete("Rewards distributed successfully!") }
+        }
+    }
+
     fun adminCreateTaskTemplate(task: DailyTaskEntity) {
         if (_currentUser.value?.isAdmin == true) {
             syncManager.saveTaskTemplateDirectly(task)
+        }
+    }
+
+    fun adminKickPlayerFromTournament(tournamentId: String, emailKey: String, onComplete: (String) -> Unit) {
+        val admin = _currentUser.value ?: return
+        if (!admin.isAdmin) return
+        
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val t = tournaments.value.find { it.id == tournamentId }
+            val u = allUsers.value.find { it.emailKey == emailKey }
+            if (t == null || u == null) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { onComplete("Error: not found") }
+                return@launch
+            }
+            
+            val newJoined = u.joinedTournaments.split(",").filter { it.isNotBlank() && it != tournamentId }.joinToString(",")
+            val updatedUser = u.copy(joinedTournaments = newJoined)
+            syncManager.saveUserDirectly(updatedUser)
+            
+            val updatedTournament = t.copy(slotsFilled = if (t.slotsFilled > 0) t.slotsFilled - 1 else 0)
+            syncManager.saveTournamentDirectly(updatedTournament)
+            
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { onComplete("Player kicked") }
         }
     }
 

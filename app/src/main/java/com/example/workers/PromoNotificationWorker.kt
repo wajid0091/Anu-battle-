@@ -73,7 +73,7 @@ class PromoNotificationWorker(
         )
 
         val notification = NotificationCompat.Builder(applicationContext, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_info) // Fallback icon
+            .setSmallIcon(R.drawable.ic_stat_trophy)
             .setContentTitle(title)
             .setContentText(message)
             .setAutoCancel(true)
