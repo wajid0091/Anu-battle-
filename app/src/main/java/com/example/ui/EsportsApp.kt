@@ -391,6 +391,46 @@ fun LoginRegisterScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
 
+    var showPrivacyDialog by remember { mutableStateOf(false) }
+    var showTermsDialog by remember { mutableStateOf(false) }
+
+    val termsTxt by viewModel.termsText.collectAsStateWithLifecycle()
+    val privacyTxt by viewModel.privacyText.collectAsStateWithLifecycle()
+
+    if (showPrivacyDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showPrivacyDialog = false },
+            title = { Text("Privacy Policy", color = NeonGold) },
+            text = { 
+                Text(
+                    text = if (privacyTxt.isNotBlank()) privacyTxt else "No privacy policy set yet.", 
+                    color = Color.White, fontSize = 14.sp
+                ) 
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showPrivacyDialog = false }) { Text("Close", color = NeonGold) }
+            },
+            containerColor = CharcoalBg
+        )
+    }
+
+    if (showTermsDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showTermsDialog = false },
+            title = { Text("Terms & Conditions", color = NeonGold) },
+            text = { 
+                Text(
+                    text = if (termsTxt.isNotBlank()) termsTxt else "No terms set yet.", 
+                    color = Color.White, fontSize = 14.sp
+                ) 
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showTermsDialog = false }) { Text("Close", color = NeonGold) }
+            },
+            containerColor = CharcoalBg
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -649,6 +689,31 @@ fun LoginRegisterScreen(
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
                             textAlign = TextAlign.Center
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("By continuing, you agree to our ", color = GrayText, fontSize = 11.sp)
+                        Text(
+                            "Terms",
+                            color = NeonGold,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { showTermsDialog = true }.padding(horizontal = 2.dp)
+                        )
+                        Text("& ", color = GrayText, fontSize = 11.sp)
+                        Text(
+                            "Privacy Policy",
+                            color = NeonGold,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { showPrivacyDialog = true }.padding(horizontal = 2.dp)
                         )
                     }
 
@@ -1243,8 +1308,9 @@ fun TournamentDetailScreen(
     val cooldowns by viewModel.cooldowns.collectAsStateWithLifecycle()
     val remainingCd = cooldowns[tournament.id] ?: 0
 
-    // Local state for tracking ads watched specifically for registration
-    var adsWatchedForRegister by remember { mutableStateOf(0) }
+    val adProgressList by viewModel.tournamentAdProgress.collectAsStateWithLifecycle()
+    val adsWatchedForRegister = adProgressList.find { it.tournamentId == tournamentId }?.watchedCount ?: 0
+
     val isUserJoined = user.joinedTournaments.contains(tournament.id)
     val clipboardManager = LocalClipboardManager.current
 
@@ -1591,7 +1657,7 @@ fun TournamentDetailScreen(
             }
 
             // Per Kill & Rank Allocation Info
-            if (tournament.perKillPrize > 0.0 || tournament.rankPrizes.isNotBlank()) {
+            if (tournament.showRewardIndex && (tournament.perKillPrize > 0.0 || tournament.rankPrizes.isNotBlank())) {
                 item {
                     Text(
                         text = "Prize Description",
@@ -1794,14 +1860,14 @@ fun TournamentDetailScreen(
                                             if (activity != null) {
                                                 viewModel.showUnityRewardedAd(activity, tournament.id) { success ->
                                                     if (success) {
-                                                        adsWatchedForRegister++
-                                                        Toast.makeText(context, "Ad completed! ($adsWatchedForRegister/${tournament.adsRequired})", Toast.LENGTH_SHORT).show()
+                                                        viewModel.incrementTournamentAdWatched(tournament.id)
+                                                        Toast.makeText(context, "Ad completed! (${adsWatchedForRegister + 1}/${tournament.adsRequired})", Toast.LENGTH_SHORT).show()
                                                     }
                                                 }
                                             } else {
                                                 viewModel.simulateAdWatch(tournament.id)
-                                                adsWatchedForRegister++
-                                                Toast.makeText(context, "Ad view tracked automatically! ($adsWatchedForRegister/${tournament.adsRequired})", Toast.LENGTH_SHORT).show()
+                                                viewModel.incrementTournamentAdWatched(tournament.id)
+                                                Toast.makeText(context, "Ad view tracked automatically! (${adsWatchedForRegister + 1}/${tournament.adsRequired})", Toast.LENGTH_SHORT).show()
                                             }
                                         }
                                     },
@@ -2450,15 +2516,18 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
 
         item {
             Spacer(modifier = Modifier.height(16.dp))
+            val cooldowns by viewModel.cooldowns.collectAsStateWithLifecycle()
+            val remainingCd = cooldowns["rewards_wallet_watch"] ?: 0
+
             Card(
-                colors = CardDefaults.cardColors(containerColor = NeonGold.copy(alpha=0.15f)),
-                border = BorderStroke(1.dp, NeonGold),
-                modifier = Modifier.fillMaxWidth().clickable {
+                colors = CardDefaults.cardColors(containerColor = if (remainingCd == 0) NeonGold.copy(alpha=0.15f) else Color.Gray.copy(alpha=0.15f)),
+                border = BorderStroke(1.dp, if (remainingCd == 0) NeonGold else Color.Gray),
+                modifier = Modifier.fillMaxWidth().clickable(enabled = remainingCd == 0) {
                     val activity = context.findActivity()
                     if (activity != null) {
                         viewModel.showUnityRewardedAd(activity, "rewards_wallet_watch") { success ->
                             if (success) {
-                                Toast.makeText(context, "You earned 10 Coins!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "You earned coins from watching an ad!", Toast.LENGTH_SHORT).show()
                             }
                         }
                     } else {
@@ -2472,8 +2541,10 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Watch Ads to Earn Coins", color = NeonGold, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Text("Watch short video clips to gather coins for Diamond redemption.", color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(top=4.dp))
+                        Text("Watch Ads to Earn Coins", color = if (remainingCd == 0) NeonGold else Color.Gray, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text(
+                            if (remainingCd > 0) "Cooldown active! Please wait ${remainingCd}s to watch again." else "Watch short video clips to gather coins for Diamond redemption.",
+                            color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(top=4.dp))
                     }
                     Icon(
                         imageVector = Icons.Default.PlayCircleOutline,
@@ -2515,8 +2586,25 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
         } else {
             items(dailyTasks) { task ->
                 val progress = taskProgress.find { it.taskId == task.id }
-                val currentVal = progress?.currentValue ?: 0
-                val isClaimed = progress?.claimed == true || currentVal >= task.targetValue
+                var currentVal = progress?.currentValue ?: 0
+                var isClaimed = progress?.claimed == true || currentVal >= task.targetValue
+
+                if (task.isDaily && progress != null) {
+                    val now = System.currentTimeMillis()
+                    val calNow = java.util.Calendar.getInstance()
+                    calNow.timeInMillis = now
+                    val strNow = "${calNow.get(java.util.Calendar.YEAR)}-${calNow.get(java.util.Calendar.DAY_OF_YEAR)}"
+
+                    val calLast = java.util.Calendar.getInstance()
+                    calLast.timeInMillis = progress.lastUpdated
+                    val strLast = "${calLast.get(java.util.Calendar.YEAR)}-${calLast.get(java.util.Calendar.DAY_OF_YEAR)}"
+                    
+                    if (strNow != strLast) {
+                        currentVal = 0
+                        isClaimed = false
+                    }
+                }
+
                 val percentProgress = if (task.targetValue > 0) currentVal.toFloat() / task.targetValue.toFloat() else 0f
                 val clampedPercent = percentProgress.coerceIn(0f, 1f)
 
@@ -2642,6 +2730,47 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
 
     var redeemCode by remember { mutableStateOf("") }
     var showTxHistory by remember { mutableStateOf(false) }
+
+    var showPrivacyDialogProfile by remember { mutableStateOf(false) }
+    val termsTxt by viewModel.termsText.collectAsStateWithLifecycle()
+    val privacyTxt by viewModel.privacyText.collectAsStateWithLifecycle()
+    val sptEmail by viewModel.supportEmail.collectAsStateWithLifecycle()
+
+    var showTermsDialogProfile by remember { mutableStateOf(false) }
+
+    if (showPrivacyDialogProfile) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showPrivacyDialogProfile = false },
+            title = { Text("Privacy Policy", color = NeonGold) },
+            text = { 
+                Text(
+                    text = if (privacyTxt.isNotBlank()) privacyTxt else "No privacy policy set yet.", 
+                    color = Color.White, fontSize = 14.sp
+                ) 
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showPrivacyDialogProfile = false }) { Text("Close", color = NeonGold) }
+            },
+            containerColor = CharcoalBg
+        )
+    }
+
+    if (showTermsDialogProfile) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showTermsDialogProfile = false },
+            title = { Text("Terms & Conditions", color = NeonGold) },
+            text = { 
+                Text(
+                    text = if (termsTxt.isNotBlank()) termsTxt else "No terms set yet.", 
+                    color = Color.White, fontSize = 14.sp
+                ) 
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showTermsDialogProfile = false }) { Text("Close", color = NeonGold) }
+            },
+            containerColor = CharcoalBg
+        )
+    }
 
     if (showTxHistory) {
         val txs by viewModel.transactions.collectAsStateWithLifecycle()
@@ -2793,8 +2922,22 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
                 subtitle = "Lobby disputes and instant deposits helper details",
                 icon = Icons.Default.Phone,
                 onClick = {
-                    Toast.makeText(context, "Support Hotline: +91 9988776655. Email: assistance@anubattle.com", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Support Email: ${if (sptEmail.isNotEmpty()) sptEmail else "assistance@anubattle.com"}", Toast.LENGTH_LONG).show()
                 }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            ProfileTile(
+                title = "Privacy Policy",
+                subtitle = "View how we manage and protect your data",
+                icon = Icons.Default.Security,
+                onClick = { showPrivacyDialogProfile = true }
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            ProfileTile(
+                title = "Terms & Conditions",
+                subtitle = "Review our platform rules and policies",
+                icon = Icons.Default.Description,
+                onClick = { showTermsDialogProfile = true }
             )
             Spacer(modifier = Modifier.height(8.dp))
             ProfileTile(
@@ -3287,6 +3430,7 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
     var roomPassword by remember { mutableStateOf("") }
     var bannerUrl by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var showRewardIndex by remember { mutableStateOf(true) }
     var scheduleDate by remember { mutableStateOf("") }
     var scheduleTime by remember { mutableStateOf("") }
     var uploadingImage by remember { mutableStateOf(false) }
@@ -3339,6 +3483,7 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                 roomPassword = ""
                 bannerUrl = ""
                 description = ""
+                showRewardIndex = true
                 
                 val cal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.HOUR_OF_DAY, 2) }
                 val yr = cal.get(java.util.Calendar.YEAR)
@@ -3391,6 +3536,7 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                                     roomPassword = t.roomPassword
                                     bannerUrl = t.bannerUrl
                                     description = t.description
+                                    showRewardIndex = t.showRewardIndex
                                     
                                     val cal = java.util.Calendar.getInstance()
                                     cal.timeInMillis = t.scheduleTimeMillis
@@ -3532,6 +3678,16 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
                             modifier = Modifier.fillMaxWidth()
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Switch(
+                                checked = showRewardIndex,
+                                onCheckedChange = { showRewardIndex = it },
+                                colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = NeonGold)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Show Reward Index (Per Kill / Rank Prizes)", color = Color.White)
+                        }
                     } else {
                         OutlinedTextField(
                             value = adsRequired,
@@ -3648,7 +3804,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                                         roomId = roomId,
                                         roomPassword = roomPassword,
                                         bannerUrl = bannerUrl,
-                                        description = description
+                                        description = description,
+                                        showRewardIndex = showRewardIndex
                                     )
                                     viewModel.adminCreateTournament(entity)
                                     Toast.makeText(context, "Tournament saved!", Toast.LENGTH_SHORT).show()
@@ -3677,6 +3834,7 @@ fun AdminTaskCRUDTab(viewModel: EsportsViewModel) {
     var taskType by remember { mutableStateOf("WATCH_AD") }
     var targetValue by remember { mutableStateOf("2") }
     var coinReward by remember { mutableStateOf("10") }
+    var isDaily by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
 
@@ -3731,6 +3889,16 @@ fun AdminTaskCRUDTab(viewModel: EsportsViewModel) {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
+                Spacer(modifier = Modifier.height(6.dp))
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Checkbox(
+                        checked = isDaily,
+                        onCheckedChange = { isDaily = it },
+                        colors = androidx.compose.material3.CheckboxDefaults.colors(checkedColor = NeonGold)
+                    )
+                    Text("Is this a Daily Task? (Resets everyday)", color = Color.White)
+                }
                 
                 Spacer(modifier = Modifier.height(14.dp))
 
@@ -3745,7 +3913,8 @@ fun AdminTaskCRUDTab(viewModel: EsportsViewModel) {
                                     title = title,
                                     taskType = taskType,
                                     targetValue = targetValue.toIntOrNull() ?: 1,
-                                    coinReward = coinReward.toDoubleOrNull() ?: 5.0
+                                    coinReward = coinReward.toDoubleOrNull() ?: 5.0,
+                                    isDaily = isDaily
                                 )
                                 viewModel.adminCreateTaskTemplate(entity)
                                 Toast.makeText(context, "Challenge added!", Toast.LENGTH_SHORT).show()
@@ -3772,7 +3941,8 @@ fun AdminTaskCRUDTab(viewModel: EsportsViewModel) {
                                         title = title,
                                         taskType = taskType,
                                         targetValue = targetValue.toIntOrNull() ?: 1,
-                                        coinReward = coinReward.toDoubleOrNull() ?: 5.0
+                                        coinReward = coinReward.toDoubleOrNull() ?: 5.0,
+                                        isDaily = isDaily
                                     )
                                     viewModel.adminCreateTaskTemplate(entity)
                                     Toast.makeText(context, "Challenge modified successfully!", Toast.LENGTH_SHORT).show()
@@ -3782,6 +3952,7 @@ fun AdminTaskCRUDTab(viewModel: EsportsViewModel) {
                                     taskType = "WATCH_AD"
                                     targetValue = "2"
                                     coinReward = "10"
+                                    isDaily = false
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
@@ -3797,6 +3968,7 @@ fun AdminTaskCRUDTab(viewModel: EsportsViewModel) {
                                 taskType = "WATCH_AD"
                                 targetValue = "2"
                                 coinReward = "10"
+                                isDaily = false
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
                             modifier = Modifier.weight(1f)
@@ -3826,7 +3998,7 @@ fun AdminTaskCRUDTab(viewModel: EsportsViewModel) {
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(text = task.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            Text(text = "Type: ${task.taskType} | Target: ${task.targetValue} | Reward: ${task.coinReward.toInt()} Coins", color = GrayText, fontSize = 11.sp)
+                            Text(text = "Type: ${task.taskType} | Target: ${task.targetValue} | Reward: ${task.coinReward.toInt()} Coins | Daily: ${if(task.isDaily) "Yes" else "No"}", color = GrayText, fontSize = 11.sp)
                         }
 
                         Row {
@@ -3837,6 +4009,7 @@ fun AdminTaskCRUDTab(viewModel: EsportsViewModel) {
                                     taskType = task.taskType
                                     targetValue = task.targetValue.toString()
                                     coinReward = task.coinReward.toInt().toString()
+                                    isDaily = task.isDaily
                                 }
                             ) {
                                 Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit", tint = NeonGold)
@@ -3869,6 +4042,10 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
     val referCoinReward by viewModel.referCoinReward.collectAsStateWithLifecycle()
     val referCashReward by viewModel.referCashReward.collectAsStateWithLifecycle()
 
+    val supportE by viewModel.supportEmail.collectAsStateWithLifecycle()
+    val termsT by viewModel.termsText.collectAsStateWithLifecycle()
+    val privacyT by viewModel.privacyText.collectAsStateWithLifecycle()
+
     var inputGameId by remember { mutableStateOf(gameId) }
     var inputRewardedId by remember { mutableStateOf(rewardedId) }
     var inputInterstitialId by remember { mutableStateOf(interstitialId) }
@@ -3877,6 +4054,10 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
     var inputJcTitle by remember { mutableStateOf(jcTitle) }
     var inputJcNum by remember { mutableStateOf(jcNum) }
     var inputMinWithdraw by remember { mutableStateOf(minWithdraw) }
+
+    var inputSupportEmail by remember { mutableStateOf(supportE) }
+    var inputTermsText by remember { mutableStateOf(termsT) }
+    var inputPrivacyText by remember { mutableStateOf(privacyT) }
 
     var inputReferCoin by remember { mutableStateOf(referCoinReward.toString()) }
     var inputReferCash by remember { mutableStateOf(referCashReward.toString()) }
@@ -3889,7 +4070,7 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
     var inputR6 by remember { mutableStateOf("5.0") }
     var inputR7 by remember { mutableStateOf("15.0") }
 
-    LaunchedEffect(gameId, rewardedId, interstitialId, epTitle, epNum, jcTitle, jcNum, minWithdraw, dbDailyRewards, referCoinReward, referCashReward) {
+    LaunchedEffect(gameId, rewardedId, interstitialId, epTitle, epNum, jcTitle, jcNum, minWithdraw, dbDailyRewards, referCoinReward, referCashReward, supportE, termsT, privacyT) {
         inputGameId = gameId
         inputRewardedId = rewardedId
         inputInterstitialId = interstitialId
@@ -3900,6 +4081,10 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
         inputMinWithdraw = minWithdraw
         inputReferCoin = referCoinReward.toString()
         inputReferCash = referCashReward.toString()
+        
+        inputSupportEmail = supportE
+        inputTermsText = termsT
+        inputPrivacyText = privacyT
         
         inputR1 = dbDailyRewards.getOrNull(0)?.toString() ?: "5.0"
         inputR2 = dbDailyRewards.getOrNull(1)?.toString() ?: "5.0"
@@ -3990,6 +4175,29 @@ fun AdminSettingsTab(viewModel: EsportsViewModel) {
         ) {
             Text(text = "UPDATE PLACEMENTS", color = CharcoalBg, fontWeight = FontWeight.Bold)
         }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(text = "Support & Legal Information", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(14.dp))
+
+        OutlinedTextField(value = inputSupportEmail, onValueChange = { inputSupportEmail = it }, label = { Text("Support Email/Contact") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(value = inputPrivacyText, onValueChange = { inputPrivacyText = it }, label = { Text("Privacy Policy Text") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth().height(150.dp), maxLines = 10)
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(value = inputTermsText, onValueChange = { inputTermsText = it }, label = { Text("Terms & Conditions Text") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), modifier = Modifier.fillMaxWidth().height(150.dp), maxLines = 10)
+
+        Spacer(modifier = Modifier.height(14.dp))
+        Button(
+            onClick = {
+                viewModel.adminSetLegalSettings(inputSupportEmail, inputTermsText, inputPrivacyText)
+                Toast.makeText(context, "Legal Settings Updated!", Toast.LENGTH_SHORT).show()
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(text = "UPDATE LEGAL & SUPPORT", color = CharcoalBg, fontWeight = FontWeight.Bold)
+        }
+        Spacer(modifier = Modifier.height(40.dp))
     }
 }
 

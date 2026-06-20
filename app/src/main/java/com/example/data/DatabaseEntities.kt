@@ -47,7 +47,8 @@ data class TournamentEntity(
     val roomId: String = "",
     val roomPassword: String = "",
     val bannerUrl: String = "",
-    val description: String = ""
+    val description: String = "",
+    val showRewardIndex: Boolean = true
 )
 
 @Entity(tableName = "app_config")
@@ -72,7 +73,8 @@ data class DailyTaskEntity(
     val title: String,
     val taskType: String, // "WATCH_AD", "PLAY_MINS", "REFER", "WIN_MATCH", "JOIN_TOURNEY"
     val targetValue: Int,
-    val coinReward: Double
+    val coinReward: Double,
+    val isDaily: Boolean = false // If true, resets daily
 )
 
 @Entity(tableName = "task_progress")
@@ -81,7 +83,16 @@ data class TaskProgressEntity(
     val emailKey: String,
     val taskId: String,
     val currentValue: Int,
-    val claimed: Boolean
+    val claimed: Boolean,
+    val lastUpdated: Long = 0L
+)
+
+@Entity(tableName = "tournament_ad_progress")
+data class TournamentAdProgressEntity(
+    @PrimaryKey val compositeKey: String, // emailKey_tournamentId
+    val emailKey: String,
+    val tournamentId: String,
+    val watchedCount: Int
 )
 
 @Entity(tableName = "transaction_records")
@@ -244,6 +255,19 @@ interface EsportsDao {
 
     @Query("UPDATE notifications SET isRead = 1 WHERE emailKey = :emailKey OR emailKey = 'GLOBAL'")
     suspend fun markAllNotificationsAsRead(emailKey: String)
+
+    // Tournament Ad Progress
+    @Query("SELECT * FROM tournament_ad_progress WHERE emailKey = :emailKey AND tournamentId = :tournamentId")
+    suspend fun getTournamentAdProgress(emailKey: String, tournamentId: String): TournamentAdProgressEntity?
+
+    @Query("SELECT * FROM tournament_ad_progress WHERE emailKey = :emailKey")
+    fun getAllTournamentAdProgressFlow(emailKey: String): Flow<List<TournamentAdProgressEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTournamentAdProgress(progress: TournamentAdProgressEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTournamentAdProgresses(progresses: List<TournamentAdProgressEntity>)
 }
 
 @Database(
@@ -256,9 +280,10 @@ interface EsportsDao {
         PromoSliderEntity::class,
         DiamondPackEntity::class,
         AppConfigEntity::class,
-        NotificationEntity::class
+        NotificationEntity::class,
+        TournamentAdProgressEntity::class
     ],
-    version = 7,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

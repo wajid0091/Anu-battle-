@@ -68,18 +68,44 @@ class FirebaseSyncManager(
                     val taskId = child.key ?: continue
                     val currentValue = child.child("currentValue").getValue(Int::class.java) ?: 0
                     val claimed = child.child("claimed").getValue(Boolean::class.java) ?: false
+                    val lastUpdated = child.child("lastUpdated").getValue(Long::class.java) ?: 0L
                     progressList.add(
                         TaskProgressEntity(
                             compositeKey = "${emailKey}_$taskId",
                             emailKey = emailKey,
                             taskId = taskId,
                             currentValue = currentValue,
-                            claimed = claimed
+                            claimed = claimed,
+                            lastUpdated = lastUpdated
                         )
                     )
                 }
                 scope.launch(Dispatchers.IO) {
                     dao.insertTaskProgresses(progressList)
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        })
+
+        // Listen to tournament ad progress
+        val adProgressRef = database.getReference("tournament_ad_progress").child(emailKey)
+        adProgressRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val list = mutableListOf<TournamentAdProgressEntity>()
+                for (child in snapshot.children) {
+                    val tournamentId = child.key ?: continue
+                    val watchedCount = child.child("watchedCount").getValue(Int::class.java) ?: 0
+                    list.add(
+                        TournamentAdProgressEntity(
+                            compositeKey = "${emailKey}_$tournamentId",
+                            emailKey = emailKey,
+                            tournamentId = tournamentId,
+                            watchedCount = watchedCount
+                        )
+                    )
+                }
+                scope.launch(Dispatchers.IO) {
+                    dao.insertTournamentAdProgresses(list)
                 }
             }
             override fun onCancelled(error: DatabaseError) {}
@@ -380,6 +406,8 @@ private fun DataSnapshot.toTournamentEntity(): TournamentEntity? {
         val mapType = child("mapType").getValue(String::class.java) ?: ""
         val entryFee = child("entryFee").getValue(Double::class.java) ?: 0.0
         val prizePool = child("prizePool").getValue(Double::class.java) ?: 0.0
+        val perKillPrize = child("perKillPrize").getValue(Double::class.java) ?: 0.0
+        val rankPrizes = child("rankPrizes").getValue(String::class.java) ?: ""
         val slotsFilled = child("slotsFilled").getValue(Int::class.java) ?: 0
         val totalSlots = child("totalSlots").getValue(Int::class.java) ?: 0
         val adsRequired = child("adsRequired").getValue(Int::class.java) ?: 0
@@ -389,11 +417,13 @@ private fun DataSnapshot.toTournamentEntity(): TournamentEntity? {
         val roomPassword = child("roomPassword").getValue(String::class.java) ?: ""
         val bannerUrl = child("bannerUrl").getValue(String::class.java) ?: ""
         val description = child("description").getValue(String::class.java) ?: ""
+        val showRewardIndex = child("showRewardIndex").getValue(Boolean::class.java) ?: true
         TournamentEntity(
             id = id, title = title, gameType = gameType, mapType = mapType, entryFee = entryFee, prizePool = prizePool,
+            perKillPrize = perKillPrize, rankPrizes = rankPrizes,
             slotsFilled = slotsFilled, totalSlots = totalSlots, adsRequired = adsRequired,
             scheduleTimeMillis = scheduleTimeMillis, status = status, roomId = roomId, roomPassword = roomPassword,
-            bannerUrl = bannerUrl, description = description
+            bannerUrl = bannerUrl, description = description, showRewardIndex = showRewardIndex
         )
     } catch (e: Exception) {
         null
@@ -407,7 +437,8 @@ private fun DataSnapshot.toDailyTaskEntity(): DailyTaskEntity? {
         val taskType = child("taskType").getValue(String::class.java) ?: ""
         val targetValue = child("targetValue").getValue(Int::class.java) ?: 1
         val coinReward = child("coinReward").getValue(Double::class.java) ?: 0.0
-        DailyTaskEntity(id, title, taskType, targetValue, coinReward)
+        val isDaily = child("isDaily").getValue(Boolean::class.java) ?: false
+        DailyTaskEntity(id, title, taskType, targetValue, coinReward, isDaily)
     } catch (e: Exception) {
         null
     }

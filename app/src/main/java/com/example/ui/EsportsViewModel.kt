@@ -51,6 +51,9 @@ class EsportsViewModel(
     private val _taskProgress = MutableStateFlow<List<TaskProgressEntity>>(emptyList())
     val taskProgress: StateFlow<List<TaskProgressEntity>> = _taskProgress.asStateFlow()
 
+    private val _tournamentAdProgress = MutableStateFlow<List<TournamentAdProgressEntity>>(emptyList())
+    val tournamentAdProgress: StateFlow<List<TournamentAdProgressEntity>> = _tournamentAdProgress.asStateFlow()
+
     val transactions: StateFlow<List<TransactionRecordEntity>> = dao.getAllTransactionsFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -92,6 +95,15 @@ class EsportsViewModel(
     private val _dbDailyRewards = MutableStateFlow(listOf(5.0, 5.0, 5.0, 10.0, 5.0, 5.0, 15.0))
     val dbDailyRewards: StateFlow<List<Double>> = _dbDailyRewards.asStateFlow()
 
+    private val _supportEmail = MutableStateFlow("")
+    val supportEmail: StateFlow<String> = _supportEmail.asStateFlow()
+
+    private val _termsText = MutableStateFlow("")
+    val termsText: StateFlow<String> = _termsText.asStateFlow()
+
+    private val _privacyText = MutableStateFlow("")
+    val privacyText: StateFlow<String> = _privacyText.asStateFlow()
+
     val diamondPacks: StateFlow<List<DiamondPackEntity>> = dao.getAllDiamondPacksFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -112,6 +124,26 @@ class EsportsViewModel(
     // Deposit/Withdraw stats
     private val _depositRequestSuccess = MutableStateFlow<String?>(null)
     val depositRequestSuccess: StateFlow<String?> = _depositRequestSuccess.asStateFlow()
+
+    private fun showOsNotification(title: String, message: String) {
+        val notificationManager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel("anu_battle_channel", "Tournament Alerts", android.app.NotificationManager.IMPORTANCE_HIGH)
+            notificationManager.createNotificationChannel(channel)
+        }
+        val builder = androidx.core.app.NotificationCompat.Builder(context, "anu_battle_channel")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+
+        try {
+            notificationManager.notify((System.currentTimeMillis() / 1000).toInt(), builder.build())
+        } catch (e: Exception) {
+            // Permission missing
+        }
+    }
 
     init {
         // Restore existing user session from sharedPrefs
@@ -144,8 +176,7 @@ class EsportsViewModel(
                         val msg = "Room Info Ready! Lobby credentials for ${match.title} are now unlocked! Check the matches page."
                         FirebaseDatabase.getInstance().getReference("users").child(user.emailKey).child("inboxMessage").setValue(msg)
                         
-                        // NOTE: For true background OS notifications, implement Android NotificationManager or Firebase Cloud Messaging.
-                        // Here we use the in-app Inbox Messaging system to instantly alert the active player.
+                        showOsNotification("Tournament Ready", msg)
                     }
                 }
             }
@@ -174,6 +205,10 @@ class EsportsViewModel(
                     
                     _referCoinReward.value = snapshot.child("refer_coin_reward").getValue(Double::class.java) ?: snapshot.child("refer_coin_reward").getValue(Long::class.java)?.toDouble() ?: 0.0
                     _referCashReward.value = snapshot.child("refer_cash_reward").getValue(Double::class.java) ?: snapshot.child("refer_cash_reward").getValue(Long::class.java)?.toDouble() ?: 0.0
+
+                    _supportEmail.value = snapshot.child("support_email").getValue(String::class.java) ?: "support@example.com"
+                    _termsText.value = snapshot.child("terms_text").getValue(String::class.java) ?: "Terms and conditions..."
+                    _privacyText.value = snapshot.child("privacy_text").getValue(String::class.java) ?: "Privacy policy..."
 
                     _dbDailyRewards.value = listOf(r1, r2, r3, r4, r5, r6, r7)
 
@@ -246,6 +281,12 @@ class EsportsViewModel(
                         .filter { it > 0 }
                         .toSet()
                     _claimedDays.value = claims
+                }
+            }
+
+            launch {
+                dao.getAllTournamentAdProgressFlow(emailKey).collect { progressList ->
+                    _tournamentAdProgress.value = progressList
                 }
             }
 
@@ -526,6 +567,13 @@ class EsportsViewModel(
         syncManager.saveTransactionDirectly(tx)
     }
 
+    fun incrementTournamentAdWatched(tournamentId: String) {
+        val user = _currentUser.value ?: return
+        val currentProgress = _tournamentAdProgress.value.find { it.tournamentId == tournamentId }?.watchedCount ?: 0
+        val newProgress = currentProgress + 1
+        FirebaseDatabase.getInstance().getReference("tournament_ad_progress").child(user.emailKey).child(tournamentId).child("watchedCount").setValue(newProgress)
+    }
+
     // Real Unity Ads integration with fallback simulation to handle live ads without blockage
     fun showUnityRewardedAd(activity: android.app.Activity, tournamentId: String, onAdShowResult: (Boolean) -> Unit = {}) {
         val user = _currentUser.value ?: return
@@ -646,10 +694,15 @@ class EsportsViewModel(
 
         // Update task progress if user has task "WATCH_AD"
         saveTaskProgressByAction("PLAY_MINS", 1) // Play 2 minutes roughly
+        saveTaskProgressByAction("WATCH_AD", 1) // Also track ad watch tasks
         
         viewModelScope.launch(Dispatchers.IO) {
             // Grant dynamic reward for watching ad
-            val rewardCoins = 5.0
+            val rewardCoins = if (tournamentId == "rewards_wallet_watch") {
+                (10..25).random().toDouble()
+            } else {
+                5.0
+            }
             val updatedUser = user.copy(coins = user.coins + rewardCoins)
             syncManager.saveUserDirectly(updatedUser)
 
@@ -661,7 +714,7 @@ class EsportsViewModel(
                 coins = rewardCoins,
                 status = "SUCCESS",
                 timestamp = System.currentTimeMillis(),
-                details = "Unity Rewarded video reward credited"
+                details = "Unity Rewarded video reward ($rewardCoins Coins)"
             )
             syncManager.saveTransactionDirectly(tx)
         }
@@ -680,6 +733,15 @@ class EsportsViewModel(
                 currentCooldowns[match.id] = remaining
             }
         }
+        
+        // Cooldown for rewards_wallet_watch (3 minutes = 180 seconds)
+        val lastWatchedReward = sharedPrefs.getLong("last_watched_rewards_wallet_watch", 0L)
+        val elapsedReward = (now - lastWatchedReward) / 1000
+        val remainingReward = (180 - elapsedReward).toInt()
+        if (lastWatchedReward > 0 && remainingReward > 0) {
+            currentCooldowns["rewards_wallet_watch"] = remainingReward
+        }
+
         _cooldowns.value = currentCooldowns
     }
 
@@ -797,19 +859,39 @@ class EsportsViewModel(
         val user = _currentUser.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val matchingTasks = dailyTasks.value.filter { it.taskType == actionType }
+            val now = System.currentTimeMillis()
+            val calNow = java.util.Calendar.getInstance()
+            calNow.timeInMillis = now
+            val strNow = "${calNow.get(java.util.Calendar.YEAR)}-${calNow.get(java.util.Calendar.DAY_OF_YEAR)}"
+
             for (taskTemplate in matchingTasks) {
                 val taskId = taskTemplate.id
                 val progressKey = "${user.emailKey}_$taskId"
                 val activeProgress = _taskProgress.value.find { it.taskId == taskId }
-                val currentVal = activeProgress?.currentValue ?: 0
-                val target = taskTemplate.targetValue
+                
+                var currentVal = activeProgress?.currentValue ?: 0
+                var isClaimed = activeProgress?.claimed ?: false
 
+                if (taskTemplate.isDaily && activeProgress != null) {
+                    val calLast = java.util.Calendar.getInstance()
+                    calLast.timeInMillis = activeProgress.lastUpdated
+                    val strLast = "${calLast.get(java.util.Calendar.YEAR)}-${calLast.get(java.util.Calendar.DAY_OF_YEAR)}"
+                    if (strNow != strLast) {
+                        currentVal = 0 // Reset daily task
+                        isClaimed = false
+                    }
+                }
+
+                if (isClaimed) continue // do not perform increments if already claimed. Wait, if claimed but daily? It would have been reset by above check if next day.
+
+                val target = taskTemplate.targetValue
                 val updatedProgress = TaskProgressEntity(
                     compositeKey = progressKey,
                     emailKey = user.emailKey,
                     taskId = taskId,
                     currentValue = currentVal + increment,
-                    claimed = currentVal + increment >= target
+                    claimed = currentVal + increment >= target,
+                    lastUpdated = now
                 )
                 syncManager.saveTaskProgressDirectly(updatedProgress)
 
@@ -840,8 +922,28 @@ class EsportsViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val progressKey = "${user.emailKey}_$taskId"
             val activeProgress = _taskProgress.value.find { it.taskId == taskId }
-            val currentVal = activeProgress?.currentValue ?: 0
             val taskTemplate = dailyTasks.value.find { it.id == taskId } ?: return@launch
+            
+            var currentVal = activeProgress?.currentValue ?: 0
+            var isClaimed = activeProgress?.claimed ?: false
+
+            val now = System.currentTimeMillis()
+            val calNow = java.util.Calendar.getInstance()
+            calNow.timeInMillis = now
+            val strNow = "${calNow.get(java.util.Calendar.YEAR)}-${calNow.get(java.util.Calendar.DAY_OF_YEAR)}"
+
+            if (taskTemplate.isDaily && activeProgress != null) {
+                val calLast = java.util.Calendar.getInstance()
+                calLast.timeInMillis = activeProgress.lastUpdated
+                val strLast = "${calLast.get(java.util.Calendar.YEAR)}-${calLast.get(java.util.Calendar.DAY_OF_YEAR)}"
+                if (strNow != strLast) {
+                    currentVal = 0
+                    isClaimed = false
+                }
+            }
+
+            if (isClaimed) return@launch
+
             val target = taskTemplate.targetValue
 
             val updatedProgress = TaskProgressEntity(
@@ -849,7 +951,8 @@ class EsportsViewModel(
                 emailKey = user.emailKey,
                 taskId = taskId,
                 currentValue = currentVal + increment,
-                claimed = currentVal + increment >= target
+                claimed = currentVal + increment >= target,
+                lastUpdated = now
             )
             syncManager.saveTaskProgressDirectly(updatedProgress)
 
@@ -1055,7 +1158,18 @@ class EsportsViewModel(
                 "refer_coin_reward" to referCoin,
                 "refer_cash_reward" to referCash
             )
-            syncManager.settingsRef.setValue(settings)
+            syncManager.settingsRef.updateChildren(settings)
+        }
+    }
+
+    fun adminSetLegalSettings(supportEmail: String, terms: String, privacy: String) {
+        if (_currentUser.value?.isAdmin == true) {
+            val sMap = mapOf(
+                "support_email" to supportEmail,
+                "terms_text" to terms,
+                "privacy_text" to privacy
+            )
+            syncManager.settingsRef.updateChildren(sMap)
         }
     }
 
