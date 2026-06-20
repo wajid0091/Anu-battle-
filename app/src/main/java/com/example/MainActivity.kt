@@ -18,6 +18,12 @@ import com.example.ui.EsportsViewModel
 import com.example.ui.theme.MyApplicationTheme
 import com.google.firebase.FirebaseApp
 
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.example.workers.PromoNotificationWorker
+import java.util.concurrent.TimeUnit
+
 class MainActivity : ComponentActivity() {
 
     private val requestPermissionLauncher = registerForActivityResult(
@@ -38,6 +44,14 @@ class MainActivity : ComponentActivity() {
 
         // Initialize Firebase SDK
         FirebaseApp.initializeApp(this)
+
+        // Setup periodic worker to fetch new tournaments from DB and push local notifications if app is killed
+        val workRequest = PeriodicWorkRequestBuilder<PromoNotificationWorker>(15, TimeUnit.MINUTES).build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "PromoNotificationWorker",
+            ExistingPeriodicWorkPolicy.KEEP,
+            workRequest
+        )
 
         // Initialize local Room Database caching replica
         val database = Room.databaseBuilder(

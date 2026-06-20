@@ -196,7 +196,11 @@ fun EsportsApp(viewModel: EsportsViewModel) {
                                     )
                                     "store" -> StoreScreen(viewModel = viewModel)
                                     "rewards" -> RewardsScreen(viewModel = viewModel)
-                                    "profile" -> ProfileScreen(viewModel = viewModel, onLogout = { viewModel.logout() })
+                                    "profile" -> ProfileScreen(viewModel = viewModel, onLogout = { viewModel.logout() }, onNavigateToReferrals = { 
+                                        previousScreen = activeScreen
+                                        activeScreen = "referrals" 
+                                    })
+                                    "referrals" -> ReferralsScreen(viewModel = viewModel, onBack = { activeScreen = previousScreen })
                                 }
                             }
                         }
@@ -404,7 +408,8 @@ fun LoginRegisterScreen(
             text = { 
                 Text(
                     text = if (privacyTxt.isNotBlank()) privacyTxt else "No privacy policy set yet.", 
-                    color = Color.White, fontSize = 14.sp
+                    color = Color.White, fontSize = 14.sp,
+                    modifier = Modifier.verticalScroll(rememberScrollState())
                 ) 
             },
             confirmButton = {
@@ -421,7 +426,8 @@ fun LoginRegisterScreen(
             text = { 
                 Text(
                     text = if (termsTxt.isNotBlank()) termsTxt else "No terms set yet.", 
-                    color = Color.White, fontSize = 14.sp
+                    color = Color.White, fontSize = 14.sp,
+                    modifier = Modifier.verticalScroll(rememberScrollState())
                 ) 
             },
             confirmButton = {
@@ -1257,7 +1263,7 @@ fun TournamentCard(
                         Text(text = "PRIZE POOL", color = GrayText, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Rs.${tournament.prizePool}",
+                            text = if (tournament.prizeCurrency == "COINS") "${tournament.prizePool.toInt()} Coins" else "Rs.${tournament.prizePool.toInt()}",
                             color = NeonGold,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
@@ -1267,8 +1273,13 @@ fun TournamentCard(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(text = "ENTRY FEE", color = GrayText, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(2.dp))
+                        val entryText = when (tournament.entryCurrency) {
+                            "COINS" -> "${tournament.entryFee.toInt()} Coins"
+                            "FREE" -> "FREE"
+                            else -> if (tournament.entryFee == 0.0) "FREE" else "Rs.${tournament.entryFee.toInt()}"
+                        }
                         Text(
-                            text = if (tournament.entryFee == 0.0) "FREE" else "Rs.${tournament.entryFee}",
+                            text = entryText,
                             color = Color.White,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
@@ -1339,8 +1350,13 @@ fun TournamentDetailScreen(
                             fontSize = 11.sp
                         )
                         Spacer(modifier = Modifier.height(2.dp))
+                        val entryText = when (tournament.entryCurrency) {
+                            "COINS" -> "${tournament.entryFee.toInt()} Coins"
+                            "FREE" -> "FREE"
+                            else -> if (tournament.entryFee == 0.0) "FREE" else "Rs.${tournament.entryFee.toInt()}"
+                        }
                         Text(
-                            text = if (tournament.entryFee == 0.0) "FREE" else "Rs.${tournament.entryFee}",
+                            text = entryText,
                             color = NeonGold,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.ExtraBold
@@ -1362,7 +1378,7 @@ fun TournamentDetailScreen(
                             )
                         }
                     } else {
-                        val adRequiredButNotDone = tournament.adsRequired > 0 && adsWatchedForRegister < tournament.adsRequired
+                        val adRequiredButNotDone = tournament.entryCurrency == "FREE" && tournament.adsRequired > 0 && adsWatchedForRegister < tournament.adsRequired
                         Button(
                             onClick = {
                                 if (adRequiredButNotDone) {
@@ -2035,7 +2051,11 @@ fun StoreScreen(viewModel: EsportsViewModel) {
 
     var showWithdrawDialog by remember { mutableStateOf(false) }
     var withdrawAmountText by remember { mutableStateOf("") }
-    var withdrawDetailsText by remember { mutableStateOf("") }
+    
+    var withdrawAccName by remember { mutableStateOf("") }
+    var withdrawAccNum by remember { mutableStateOf("") }
+    var withdrawMethod by remember { mutableStateOf("EasyPaisa") }
+    var methodExpanded by remember { mutableStateOf(false) }
     
     var selectedDiamondPack by remember { mutableStateOf<com.example.data.DiamondPackEntity?>(null) }
     
@@ -2343,14 +2363,48 @@ fun StoreScreen(viewModel: EsportsViewModel) {
                     Spacer(modifier = Modifier.height(12.dp))
 
                     OutlinedTextField(
-                        value = withdrawDetailsText,
-                        onValueChange = { withdrawDetailsText = it },
-                        label = { Text("UPI Address / Banking Details") },
+                        value = withdrawAccName,
+                        onValueChange = { withdrawAccName = it },
+                        label = { Text("Account Holder Name") },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White, focusedBorderColor = NeonGold
                         ),
-                        singleLine = true
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = withdrawAccNum,
+                        onValueChange = { withdrawAccNum = it },
+                        label = { Text("Account Number") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White, focusedBorderColor = NeonGold
+                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text("Payment Method", color = GrayText, fontSize = 12.sp, modifier = Modifier.align(Alignment.Start))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("EasyPaisa", "JazzCash", "NayaPay", "SadaPay").forEach { method ->
+                            androidx.compose.material3.FilterChip(
+                                selected = withdrawMethod == method,
+                                onClick = { withdrawMethod = method },
+                                label = { Text(method) },
+                                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = NeonGold,
+                                    selectedLabelColor = CharcoalBg,
+                                    labelColor = Color.White
+                                )
+                            )
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(20.dp))
 
@@ -2361,15 +2415,19 @@ fun StoreScreen(viewModel: EsportsViewModel) {
                         Button(
                             onClick = {
                                 val amt = withdrawAmountText.toDoubleOrNull() ?: 0.0
-                                if (amt > 0) {
-                                    viewModel.requestWithdraw(amt, withdrawDetailsText) { err ->
+                                if (withdrawAccName.isBlank() || withdrawAccNum.isBlank()) {
+                                    Toast.makeText(context, "Please fill all details", Toast.LENGTH_SHORT).show()
+                                } else if (amt >= minWithdraw.toDoubleOrNull() ?: 0.0) {
+                                    val details = "Method: $withdrawMethod | Name: $withdrawAccName | Acc: $withdrawAccNum"
+                                    viewModel.requestWithdraw(amt, details) { err ->
                                         Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
                                     }
                                     showWithdrawDialog = false
                                     withdrawAmountText = ""
-                                    withdrawDetailsText = ""
+                                    withdrawAccName = ""
+                                    withdrawAccNum = ""
                                 } else {
-                                    Toast.makeText(context, "Enter a valid amount", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Minimum withdrawal is $minWithdraw Rs", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = MintGreen)
@@ -2541,7 +2599,7 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Watch Ads to Earn Coins", color = if (remainingCd == 0) NeonGold else Color.Gray, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("Watch Ads to Earn 10,000+ Coins", color = if (remainingCd == 0) NeonGold else Color.Gray, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Text(
                             if (remainingCd > 0) "Cooldown active! Please wait ${remainingCd}s to watch again." else "Watch short video clips to gather coins for Diamond redemption.",
                             color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(top=4.dp))
@@ -2572,7 +2630,9 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
             )
         }
 
-        if (dailyTasks.isEmpty()) {
+        val rewardTasks = dailyTasks.filter { it.taskType != "REFER" }
+
+        if (rewardTasks.isEmpty()) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
@@ -2584,7 +2644,7 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
                 }
             }
         } else {
-            items(dailyTasks) { task ->
+            items(rewardTasks) { task ->
                 val progress = taskProgress.find { it.taskId == task.id }
                 var currentVal = progress?.currentValue ?: 0
                 var isClaimed = progress?.claimed == true || currentVal >= task.targetValue
@@ -2715,11 +2775,280 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
     } // end Column wrapper
 }
 
-// ============================================
-// TAB SCREEN: PROFILE HUB / REDEEM CODES
-// ============================================
 @Composable
-fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
+fun ReferralsScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val userState by viewModel.currentUser.collectAsStateWithLifecycle()
+    val user = userState ?: return
+
+    var redeemCode by remember { mutableStateOf("") }
+    var redeeming by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CharcoalBg)
+    ) {
+        // App Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.Black)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = "Referral Center",
+                color = NeonGold,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+        ) {
+            val dailyTasks by viewModel.dailyTasks.collectAsStateWithLifecycle()
+            val taskProgress by viewModel.taskProgress.collectAsStateWithLifecycle()
+            val referTasks = dailyTasks.filter { it.taskType == "REFER" }.sortedBy { it.targetValue }
+
+            // Stats Card
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Your Referral Stats", color = NeonGold, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Total Referrals", color = GrayText, fontSize = 12.sp)
+                            Text("${user.totalReferrals}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Earnings (Coins)", color = GrayText, fontSize = 12.sp)
+                            Text("${(viewModel.referCoinReward.value * user.totalReferrals).toInt()}", color = NeonGold, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Bonus Earned", color = GrayText, fontSize = 12.sp)
+                            Text("Rs.${String.format("%.1f", viewModel.referCashReward.value * user.totalReferrals)}", color = MintGreen, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // My Code Card
+            Text("Your Referral Code", color = Color.White, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = user.referCode,
+                    onValueChange = {},
+                    readOnly = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MintGreen,
+                        focusedTextColor = MintGreen,
+                        unfocusedTextColor = Color.White
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("Referral Code", user.referCode)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "Copied to clipboard!", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonGold)
+                ) {
+                    Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "Copy", tint = CharcoalBg)
+                }
+            }
+            
+            Text(
+                "Share your code with friends. Once they sign up, you both get rewards!",
+                color = GrayText, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Redeem Code Card
+            Text("Redeem a Code", color = Color.White, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            if (user.referredBy.isNotBlank()) {
+                Text("You have already redeemed a code (${user.referredBy}).", color = GrayText, fontSize = 14.sp)
+            } else {
+                OutlinedTextField(
+                    value = redeemCode,
+                    onValueChange = { redeemCode = it },
+                    label = { Text("Friend's Referral Code") },
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        if (redeemCode.isNotBlank()) {
+                            redeeming = true
+                            viewModel.redeemReferralCode(redeemCode) { success, msg ->
+                                redeeming = false
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                if (success) redeemCode = ""
+                            }
+                        }
+                    },
+                    enabled = !redeeming && redeemCode.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (redeeming) "REDEEMING..." else "REDEEM", color = CharcoalBg, fontWeight = FontWeight.Bold)
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+
+            if (referTasks.isNotEmpty()) {
+                Text("Referral Milestones", color = Color.White, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                referTasks.forEach { task ->
+                    val progress = taskProgress.find { it.taskId == task.id }
+                    val currentVal = user.totalReferrals
+                    val isClaimed = progress?.claimed == true
+                    val canClaim = currentVal >= task.targetValue && !isClaimed
+                    
+                    val percentProgress = if (task.targetValue > 0) currentVal.toFloat() / task.targetValue.toFloat() else 0f
+                    val clampedPercent = percentProgress.coerceIn(0f, 1f)
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        border = BorderStroke(1.dp, if (isClaimed) MintGreen.copy(alpha=0.3f) else Color.DarkGray)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(
+                                        if (isClaimed) MintGreen.copy(alpha = 0.15f) else Color.DarkGray,
+                                        CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isClaimed) Icons.Default.CheckCircle else Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = if (isClaimed) MintGreen else Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = task.title,
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        text = "+${task.coinReward.toInt()} Coins",
+                                        color = NeonGold,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(start = 4.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                LinearProgressIndicator(
+                                    progress = { clampedPercent },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp)),
+                                    color = if (isClaimed) MintGreen else NeonOrange,
+                                    trackColor = Color.DarkGray,
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Progress: $currentVal / ${task.targetValue}",
+                                        color = GrayText,
+                                        fontSize = 11.sp
+                                    )
+                                    if (isClaimed) {
+                                        Text("CLAIMED", color = MintGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    } else if (canClaim) {
+                                        var claiming by remember { mutableStateOf(false) }
+                                        Text(
+                                            text = if (claiming) "CLAIMING..." else "CLAIM REWARD",
+                                            color = NeonGold,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.clickable {
+                                                if (!claiming) {
+                                                    claiming = true
+                                                    viewModel.manuallyClaimTaskReward(task.id) { _, msg ->
+                                                        claiming = false
+                                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    } else {
+                                        Text("In Progress", color = NeonOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(32.dp))
+            }
+        }
+    }
+}
+@Composable
+fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit, onNavigateToReferrals: () -> Unit) {
     val context = LocalContext.current
     val userState by viewModel.currentUser.collectAsStateWithLifecycle()
     val user = userState ?: return
@@ -2745,7 +3074,8 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
             text = { 
                 Text(
                     text = if (privacyTxt.isNotBlank()) privacyTxt else "No privacy policy set yet.", 
-                    color = Color.White, fontSize = 14.sp
+                    color = Color.White, fontSize = 14.sp,
+                    modifier = Modifier.verticalScroll(rememberScrollState())
                 ) 
             },
             confirmButton = {
@@ -2762,7 +3092,8 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
             text = { 
                 Text(
                     text = if (termsTxt.isNotBlank()) termsTxt else "No terms set yet.", 
-                    color = Color.White, fontSize = 14.sp
+                    color = Color.White, fontSize = 14.sp,
+                    modifier = Modifier.verticalScroll(rememberScrollState())
                 ) 
             },
             confirmButton = {
@@ -2910,10 +3241,10 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit) {
             Spacer(modifier = Modifier.height(8.dp))
             ProfileTile(
                 title = "Refer & Claim Rewards",
-                subtitle = "Share your unique code: ${user.referCode}",
+                subtitle = "Share your code, redeem others, and earn",
                 icon = Icons.Default.Share,
                 onClick = {
-                    Toast.makeText(context, "Your referral code is: ${user.referCode}", Toast.LENGTH_LONG).show()
+                    onNavigateToReferrals()
                 }
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -3418,7 +3749,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
     var editingTournamentId by remember { mutableStateOf<String?>(null) }
     
     var title by remember { mutableStateOf("") }
-    var isFree by remember { mutableStateOf(false) }
+    var entryCurrency by remember { mutableStateOf("CASH") } // "CASH", "COINS", "FREE"
+    var prizeCurrency by remember { mutableStateOf("CASH") } // "CASH", "COINS"
     var mapType by remember { mutableStateOf("Bermuda") }
     var entryFee by remember { mutableStateOf("") }
     var prizePool by remember { mutableStateOf("") }
@@ -3471,7 +3803,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
             onClick = {
                 editingTournamentId = null
                 title = ""
-                isFree = false
+                entryCurrency = "CASH"
+                prizeCurrency = "CASH"
                 mapType = "Bermuda"
                 entryFee = ""
                 prizePool = ""
@@ -3524,7 +3857,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                                 onClick = {
                                     editingTournamentId = t.id
                                     title = t.title
-                                    isFree = t.entryFee == 0.0
+                                    entryCurrency = t.entryCurrency
+                                    prizeCurrency = t.prizeCurrency
                                     mapType = t.mapType
                                     entryFee = t.entryFee.toString()
                                     prizePool = t.prizePool.toString()
@@ -3619,13 +3953,16 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
 
                     Spacer(modifier = Modifier.height(8.dp))
                     
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.material3.Checkbox(
-                            checked = isFree,
-                            onCheckedChange = { isFree = it },
-                            colors = androidx.compose.material3.CheckboxDefaults.colors(checkedColor = NeonGold)
-                        )
-                        Text("Is this a Free Tournament?", color = Color.White)
+                    Text("Entry Type", color = Color.White, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("CASH", "COINS", "FREE").forEach { type ->
+                            androidx.compose.material3.FilterChip(
+                                selected = entryCurrency == type,
+                                onClick = { entryCurrency = type },
+                                label = { Text(type) },
+                                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = NeonGold, selectedLabelColor = CharcoalBg, labelColor = Color.White)
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -3640,21 +3977,33 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    if (!isFree) {
+                    if (entryCurrency != "FREE") {
                         OutlinedTextField(
                             value = entryFee,
                             onValueChange = { entryFee = it },
-                            label = { Text("Entry Fee (Rs.)") },
+                            label = { Text("Entry Fee (${if (entryCurrency == "COINS") "Coins" else "Rs."})") },
                             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         
+                        Text("Prize Pool Currency", color = Color.White, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("CASH", "COINS").forEach { type ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = prizeCurrency == type,
+                                    onClick = { prizeCurrency = type },
+                                    label = { Text(type) },
+                                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = NeonGold, selectedLabelColor = CharcoalBg, labelColor = Color.White)
+                                )
+                            }
+                        }
+
                         OutlinedTextField(
                             value = prizePool,
                             onValueChange = { prizePool = it },
-                            label = { Text("Total Prize Pool (Rs.)") },
+                            label = { Text("Total Prize Pool (${if (prizeCurrency == "COINS") "Coins" else "Rs."})") },
                             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
@@ -3664,7 +4013,7 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                         OutlinedTextField(
                             value = perKillPrize,
                             onValueChange = { perKillPrize = it },
-                            label = { Text("Per Kill Reward (Rs.) Optional") },
+                            label = { Text("Per Kill Reward (${if (prizeCurrency == "COINS") "Coins" else "Rs."}) Optional") },
                             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
@@ -3693,6 +4042,38 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                             value = adsRequired,
                             onValueChange = { adsRequired = it },
                             label = { Text("Ads Required Watch Target") },
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        Text("Prize Pool Currency", color = Color.White, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("CASH", "COINS").forEach { type ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = prizeCurrency == type,
+                                    onClick = { prizeCurrency = type },
+                                    label = { Text(type) },
+                                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = NeonGold, selectedLabelColor = CharcoalBg, labelColor = Color.White)
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = prizePool,
+                            onValueChange = { prizePool = it },
+                            label = { Text("Total Prize Pool (${if (prizeCurrency == "COINS") "Coins" else "Rs."})") },
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = perKillPrize,
+                            onValueChange = { perKillPrize = it },
+                            label = { Text("Per Kill Reward (${if (prizeCurrency == "COINS") "Coins" else "Rs."}) Optional") },
                             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
@@ -3761,9 +4142,9 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                                 if (title.isBlank()) {
                                     Toast.makeText(context, "Title is required!", Toast.LENGTH_SHORT).show()
                                 } else {
-                                    val finalEntryFee = if (isFree) 0.0 else (entryFee.toDoubleOrNull() ?: 0.0)
-                                    val finalPrizePool = if (isFree) 0.0 else (prizePool.toDoubleOrNull() ?: 0.0)
-                                    val finalAdsRequired = if (isFree) (adsRequired.toIntOrNull() ?: 3) else 0
+                                    val finalEntryFee = if (entryCurrency == "FREE") 0.0 else (entryFee.toDoubleOrNull() ?: 0.0)
+                                    val finalPrizePool = (prizePool.toDoubleOrNull() ?: 0.0)
+                                    val finalAdsRequired = if (entryCurrency == "FREE") (adsRequired.toIntOrNull() ?: 3) else 0
 
                                     val finalScheduleMillis = try {
                                         val partsDate = scheduleDate.trim().split("-")
@@ -3805,7 +4186,9 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                                         roomPassword = roomPassword,
                                         bannerUrl = bannerUrl,
                                         description = description,
-                                        showRewardIndex = showRewardIndex
+                                        showRewardIndex = showRewardIndex,
+                                        entryCurrency = entryCurrency,
+                                        prizeCurrency = prizeCurrency
                                     )
                                     viewModel.adminCreateTournament(entity)
                                     Toast.makeText(context, "Tournament saved!", Toast.LENGTH_SHORT).show()

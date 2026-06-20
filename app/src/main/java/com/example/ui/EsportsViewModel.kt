@@ -146,6 +146,24 @@ class EsportsViewModel(
     }
 
     init {
+        // Listen to remote global announcements for instant push
+        val globalPushRef = FirebaseDatabase.getInstance().getReference("notifications").child("GLOBAL")
+        globalPushRef.addChildEventListener(object: com.google.firebase.database.ChildEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                val timestamp = snapshot.child("timestamp").getValue(Long::class.java) ?: 0L
+                // Only show if it was created in the last 1 minute (prevents spam on fresh install)
+                if (System.currentTimeMillis() - timestamp < 60000) {
+                    val title = snapshot.child("title").getValue(String::class.java) ?: "New Announcement"
+                    val message = snapshot.child("message").getValue(String::class.java) ?: ""
+                    showOsNotification(title, message)
+                }
+            }
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onChildRemoved(snapshot: DataSnapshot) {}
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onCancelled(error: DatabaseError) {}
+        })
+
         // Restore existing user session from sharedPrefs
         val savedEmailKey = sharedPrefs.getString("logged_in_email_key", null)
         if (savedEmailKey != null) {
@@ -764,15 +782,27 @@ class EsportsViewModel(
             return
         }
 
-        // Check if user has watched required ads
-        if (adCountWatched < tournament.adsRequired) {
+        // Check if user has watched required ads (Only if FREE)
+        if (tournament.entryCurrency == "FREE" && tournament.adsRequired > 0 && adCountWatched < tournament.adsRequired) {
             onError("You must complete all ${tournament.adsRequired} required video views to bypass registration. ($adCountWatched/$tournament.adsRequired completed)")
             return
         }
 
         // Deduct fees
         val fee = tournament.entryFee
-        if (fee > 0.0) {
+        var updatedUser = user
+        if (tournament.entryCurrency == "COINS" && fee > 0.0) {
+            if (user.coins < fee) {
+                onError("Insufficient Coins! Total: ${user.coins.toInt()} Coins. Fee: ${fee.toInt()} Coins.")
+                return
+            }
+            updatedUser = updatedUser.copy(
+                coins = user.coins - fee,
+                matchesPlayed = user.matchesPlayed + 1,
+                joinedTournaments = if (user.joinedTournaments.isBlank()) tournament.id else "${user.joinedTournaments},${tournament.id}"
+            )
+            syncManager.saveUserDirectly(updatedUser)
+        } else if (tournament.entryCurrency == "CASH" && fee > 0.0) {
             val totalBalance = user.mainWallet + user.bonusWallet + user.winningWallet
             if (totalBalance < fee) {
                 onError("Insufficient wallet credits! Total: Rs.${totalBalance}. Fee: Rs.${fee}. Please deposit cash.")
@@ -814,7 +844,7 @@ class EsportsViewModel(
             }
 
             // Update user balance to Firebase & Room
-            val updatedUser = user.copy(
+            updatedUser = updatedUser.copy(
                 mainWallet = updatedMain,
                 bonusWallet = updatedBonus,
                 winningWallet = updatedWinning,
@@ -823,8 +853,8 @@ class EsportsViewModel(
             )
             syncManager.saveUserDirectly(updatedUser)
         } else {
-            // Free tournament
-            val updatedUser = user.copy(
+            // Free tournament or fee = 0
+            updatedUser = updatedUser.copy(
                 matchesPlayed = user.matchesPlayed + 1,
                 joinedTournaments = if (user.joinedTournaments.isBlank()) tournament.id else "${user.joinedTournaments},${tournament.id}"
             )
@@ -974,6 +1004,63 @@ class EsportsViewModel(
                 )
                 syncManager.saveTransactionDirectly(tx)
             }
+        }
+    }
+
+    fun manuallyClaimTaskReward(taskId: String, onComplete: (Boolean, String) -> Unit) {
+        val user = _currentUser.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val taskTemplate = dailyTasks.value.find { it.id == taskId }
+            if (taskTemplate == null) {
+                withContext(Dispatchers.Main) { onComplete(false, "Task not found") }
+                return@launch
+            }
+
+            var currentVal = 0
+            if (taskTemplate.taskType == "REFER") {
+                currentVal = user.totalReferrals
+            } else {
+                val p = _taskProgress.value.find { it.taskId == taskId }
+                currentVal = p?.currentValue ?: 0
+            }
+
+            if (currentVal < taskTemplate.targetValue) {
+                withContext(Dispatchers.Main) { onComplete(false, "Task not yet completed") }
+                return@launch
+            }
+
+            val activeProgress = _taskProgress.value.find { it.taskId == taskId }
+            if (activeProgress?.claimed == true) {
+                withContext(Dispatchers.Main) { onComplete(false, "Already claimed") }
+                return@launch
+            }
+
+            val updatedProgress = com.example.data.TaskProgressEntity(
+                compositeKey = "${user.emailKey}_$taskId",
+                emailKey = user.emailKey,
+                taskId = taskId,
+                currentValue = currentVal,
+                claimed = true,
+                lastUpdated = System.currentTimeMillis()
+            )
+            syncManager.saveTaskProgressDirectly(updatedProgress)
+
+            val updatedUser = user.copy(coins = user.coins + taskTemplate.coinReward)
+            syncManager.saveUserDirectly(updatedUser)
+
+            val tx = com.example.data.TransactionRecordEntity(
+                id = "task_manual_claim_${taskId}_${user.emailKey}_${java.util.UUID.randomUUID()}",
+                emailKey = user.emailKey,
+                type = "REWARD_CLAIM",
+                amount = 0.0,
+                coins = taskTemplate.coinReward,
+                status = "SUCCESS",
+                timestamp = System.currentTimeMillis(),
+                details = "Challenge '${taskTemplate.title}' reward claimed manually"
+            )
+            syncManager.saveTransactionDirectly(tx)
+
+            withContext(Dispatchers.Main) { onComplete(true, "Reward claimed successfully!") }
         }
     }
 
@@ -1129,6 +1216,77 @@ class EsportsViewModel(
     fun adminDeleteTaskTemplate(id: String) {
         if (_currentUser.value?.isAdmin == true) {
             syncManager.deleteTaskTemplateDirectly(id)
+        }
+    }
+
+    fun redeemReferralCode(code: String, onComplete: (Boolean, String) -> Unit) {
+        val user = _currentUser.value ?: return
+        if (user.referredBy.isNotBlank()) {
+            onComplete(false, "You have already redeemed a referral code!")
+            return
+        }
+        if (code.trim() == user.referCode) {
+            onComplete(false, "You cannot redeem your own code!")
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val dbRef = FirebaseDatabase.getInstance().getReference("users")
+                val snap = dbRef.get().await()
+                var referee: UserEntity? = null
+                
+                for (child in snap.children) {
+                    val u = child.getValue(UserEntity::class.java)
+                    if (u != null && u.referCode == code.trim()) {
+                        referee = u
+                        break
+                    }
+                }
+                
+                if (referee == null) {
+                    withContext(Dispatchers.Main) { onComplete(false, "Invalid referral code!") }
+                    return@launch
+                }
+                
+                if (referee.deviceId == user.deviceId) {
+                    withContext(Dispatchers.Main) { onComplete(false, "Cannot redeem from the same device!") }
+                    return@launch
+                }
+
+                // Credit the referee
+                val config = dao.getAppConfigSync() ?: AppConfigEntity()
+                
+                val updatedReferee = referee.copy(
+                    totalReferrals = referee.totalReferrals + 1,
+                    coins = referee.coins + config.referCoinReward,
+                    bonusWallet = referee.bonusWallet + config.referCashReward
+                )
+                syncManager.saveUserDirectly(updatedReferee)
+                
+                if (config.referCoinReward > 0 || config.referCashReward > 0) {
+                    val refTx = TransactionRecordEntity(
+                        id = "refer_${UUID.randomUUID()}",
+                        emailKey = referee.emailKey,
+                        type = "REFERRAL",
+                        amount = config.referCashReward,
+                        coins = config.referCoinReward,
+                        status = "SUCCESS",
+                        timestamp = System.currentTimeMillis(),
+                        details = "Referral bonus from matching code ${user.name}"
+                    )
+                    syncManager.saveTransactionDirectly(refTx)
+                }
+
+                // Update current user
+                val updatedUser = user.copy(referredBy = referee.emailKey)
+                syncManager.saveUserDirectly(updatedUser)
+                
+                withContext(Dispatchers.Main) { onComplete(true, "Referral code redeemed successfully!") }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { onComplete(false, "Network error. Please try again.") }
+            }
         }
     }
 

@@ -48,7 +48,9 @@ data class TournamentEntity(
     val roomPassword: String = "",
     val bannerUrl: String = "",
     val description: String = "",
-    val showRewardIndex: Boolean = true
+    val showRewardIndex: Boolean = true,
+    val entryCurrency: String = "CASH", // "CASH", "COINS", "FREE"
+    val prizeCurrency: String = "CASH"  // "CASH", "COINS"
 )
 
 @Entity(tableName = "app_config")

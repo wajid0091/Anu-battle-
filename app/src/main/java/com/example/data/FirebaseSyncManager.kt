@@ -418,12 +418,15 @@ private fun DataSnapshot.toTournamentEntity(): TournamentEntity? {
         val bannerUrl = child("bannerUrl").getValue(String::class.java) ?: ""
         val description = child("description").getValue(String::class.java) ?: ""
         val showRewardIndex = child("showRewardIndex").getValue(Boolean::class.java) ?: true
+        val entryCurrency = child("entryCurrency").getValue(String::class.java) ?: "CASH"
+        val prizeCurrency = child("prizeCurrency").getValue(String::class.java) ?: "CASH"
         TournamentEntity(
             id = id, title = title, gameType = gameType, mapType = mapType, entryFee = entryFee, prizePool = prizePool,
             perKillPrize = perKillPrize, rankPrizes = rankPrizes,
             slotsFilled = slotsFilled, totalSlots = totalSlots, adsRequired = adsRequired,
             scheduleTimeMillis = scheduleTimeMillis, status = status, roomId = roomId, roomPassword = roomPassword,
-            bannerUrl = bannerUrl, description = description, showRewardIndex = showRewardIndex
+            bannerUrl = bannerUrl, description = description, showRewardIndex = showRewardIndex,
+            entryCurrency = entryCurrency, prizeCurrency = prizeCurrency
         )
     } catch (e: Exception) {
         null
