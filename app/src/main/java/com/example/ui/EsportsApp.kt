@@ -363,7 +363,7 @@ fun HeaderBox(
                         }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.EmojiEvents,
+                            imageVector = Icons.Default.Inbox,
                             contentDescription = "Alerts",
                             tint = Color.White
                         )
@@ -2970,6 +2970,32 @@ fun ReferralsScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            // Invited Friends
+            Text("Invited Friends", color = Color.White, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            val allUsers by viewModel.allUsers.collectAsStateWithLifecycle()
+            val myInvitedUsers = allUsers.filter { it.referredBy == user.emailKey }
+            
+            if (myInvitedUsers.isEmpty()) {
+                Text("You haven't invited anyone yet.", color = GrayText, fontSize = 14.sp)
+            } else {
+                myInvitedUsers.forEach { invited ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        border = BorderStroke(1.dp, NeonGold.copy(alpha=0.2f))
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text(invited.name, color = Color.White, fontWeight = FontWeight.Medium)
+                            Text("Joined ✅", color = MintGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+
             // Redeem Code Card
             Text("Redeem a Code", color = Color.White, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
@@ -3571,10 +3597,6 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
     val users by viewModel.allUsers.collectAsStateWithLifecycle()
     var searchToken by remember { mutableStateOf("") }
     
-    val filteredUsers = users.filter { u ->
-        searchToken.isEmpty() || u.name.lowercase().contains(searchToken.lowercase()) || u.email.lowercase().contains(searchToken.lowercase())
-    }
-
     var editingUserWallets by remember { mutableStateOf<UserEntity?>(null) }
     var adjustMainWallet by remember { mutableStateOf("") }
     var adjustBonusWallet by remember { mutableStateOf("") }
@@ -3585,6 +3607,36 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
     var showBroadcastDialog by remember { mutableStateOf(false) }
     var broadcastTitle by remember { mutableStateOf("") }
     var broadcastMessage by remember { mutableStateOf("") }
+    var showSpamAlertsDialog by remember { mutableStateOf(false) }
+
+    val spamDeviceIds = users.groupBy { it.deviceId }.filter { it.value.size > 1 }.map { it.key }
+    val filteredUsers = users.filter { u ->
+        searchToken.isEmpty() || u.name.lowercase().contains(searchToken.lowercase()) || u.email.lowercase().contains(searchToken.lowercase())
+    }
+
+    if (showSpamAlertsDialog) {
+        AlertDialog(
+            onDismissRequest = { showSpamAlertsDialog = false },
+            title = { Text("Spam Alerts (Multiple Accounts on Same Device)", color = Color.White) },
+            text = {
+                LazyColumn {
+                    items(users.filter { spamDeviceIds.contains(it.deviceId) }) { spammer ->
+                        Column(modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth()) {
+                            Text(text = "Name: ${spammer.name}", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text(text = "Email: ${spammer.email}", color = Color.LightGray, fontSize = 12.sp)
+                            Text(text = "Device ID: ${spammer.deviceId}", color = NeonOrange, fontSize = 10.sp)
+                            HorizontalDivider(modifier = Modifier.padding(top = 4.dp), color = Color.DarkGray)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showSpamAlertsDialog = false }) { Text("Close") }
+            },
+            containerColor = CharcoalCard,
+            titleContentColor = Color.White
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -3599,11 +3651,20 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
                 modifier = Modifier.weight(1f).padding(end = 8.dp)
             )
             Button(
+                onClick = { showSpamAlertsDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                modifier = Modifier.height(56.dp).padding(end = 4.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+            ) {
+                Text("Spam Alerts", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+            Button(
                 onClick = { showBroadcastDialog = true },
                 colors = ButtonDefaults.buttonColors(containerColor = DefaultBlue),
-                modifier = Modifier.height(56.dp)
+                modifier = Modifier.height(56.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
             ) {
-                Text("Broadcast", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Broadcast", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -3757,6 +3818,15 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text("Matches Played: ${user.matchesPlayed}", color = Color.White, fontSize = 12.sp)
                             Text("Matches Won: ${user.matchesWon}", color = Color.White, fontSize = 12.sp)
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(
+                                onClick = {
+                                    viewModel.adminRevokeReferralRewards(user.emailKey)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.8f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("REVOKE SPAM REFERRAL REWARDS", color = Color.White, fontWeight = FontWeight.Bold) }
                             
                             Spacer(modifier = Modifier.height(16.dp))
                             Text("Send Direct Message to User", color = NeonGold, fontSize = 14.sp, fontWeight = FontWeight.Bold)

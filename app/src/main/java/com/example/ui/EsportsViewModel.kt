@@ -410,30 +410,40 @@ class EsportsViewModel(
                             
                             if (referCode.isNotBlank()) {
                                 try {
-                                    val dbRef = FirebaseDatabase.getInstance().getReference("users")
-                                    val snap = dbRef.get().await()
-                                    var referee: UserEntity? = null
-                                    
-                                    for (child in snap.children) {
-                                        val u = child.getValue(UserEntity::class.java)
-                                        if (u != null && u.referCode == referCode.trim()) {
-                                            referee = u
-                                            break
-                                        }
-                                    }
-                                    
-                                    if (referee != null && referee.deviceId != deviceId) {
-                                        // Count accounts registered on this device ID so far
-                                        var deviceAccountsCount = 0
+                                    val spamRef = FirebaseDatabase.getInstance().getReference("spam_devices").child(deviceId).get().await()
+                                    val isCurrentDeviceSpam = spamRef.exists() && spamRef.getValue(Boolean::class.java) == true
+
+                                    if (!isCurrentDeviceSpam) {
+                                        val dbRef = FirebaseDatabase.getInstance().getReference("users")
+                                        val snap = dbRef.get().await()
+                                        var referee: UserEntity? = null
+                                        
                                         for (child in snap.children) {
-                                            val uD = child.child("deviceId").getValue(String::class.java)
-                                            if (uD == deviceId) deviceAccountsCount++
+                                            val u = child.getValue(UserEntity::class.java)
+                                            if (u != null && u.referCode == referCode.trim()) {
+                                                referee = u
+                                                break
+                                            }
                                         }
                                         
-                                        // If more than 1 existing account, limit reached (allowed: first 2 total)
-                                        if (deviceAccountsCount < 2) {
-                                            validReferralUserKey = referee.emailKey
-                                            grantReferBonus = true
+                                        if (referee != null && referee.deviceId != deviceId) {
+                                            val refereeSpamRef = FirebaseDatabase.getInstance().getReference("spam_devices").child(referee.deviceId).get().await()
+                                            val isRefereeDeviceSpam = refereeSpamRef.exists() && refereeSpamRef.getValue(Boolean::class.java) == true
+
+                                            if (!isRefereeDeviceSpam) {
+                                                // Count accounts registered on this device ID so far
+                                                var deviceAccountsCount = 0
+                                                for (child in snap.children) {
+                                                    val uD = child.child("deviceId").getValue(String::class.java)
+                                                    if (uD == deviceId) deviceAccountsCount++
+                                                }
+                                                
+                                                // If more than 1 existing account, limit reached (allowed: first 2 total)
+                                                if (deviceAccountsCount < 2) {
+                                                    validReferralUserKey = referee.emailKey
+                                                    grantReferBonus = true
+                                                }
+                                            }
                                         }
                                     }
                                 } catch (e: Exception) {
@@ -1300,6 +1310,13 @@ class EsportsViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Check if current user device is banned from referral rewards
+                val spamRef = FirebaseDatabase.getInstance().getReference("spam_devices").child(user.deviceId).get().await()
+                if (spamRef.exists() && spamRef.getValue(Boolean::class.java) == true) {
+                    withContext(Dispatchers.Main) { onComplete(false, "Your device is blocked from referral rewards due to previous spam.") }
+                    return@launch
+                }
+
                 val dbRef = FirebaseDatabase.getInstance().getReference("users")
                 val snap = dbRef.get().await()
                 var referee: UserEntity? = null
@@ -1319,6 +1336,12 @@ class EsportsViewModel(
                 
                 if (referee.deviceId == user.deviceId) {
                     withContext(Dispatchers.Main) { onComplete(false, "Cannot redeem from the same device!") }
+                    return@launch
+                }
+
+                val refereeSpamRef = FirebaseDatabase.getInstance().getReference("spam_devices").child(referee.deviceId).get().await()
+                if (refereeSpamRef.exists() && refereeSpamRef.getValue(Boolean::class.java) == true) {
+                    withContext(Dispatchers.Main) { onComplete(false, "The referral code owner is blocked due to spam.") }
                     return@launch
                 }
 
@@ -1459,6 +1482,22 @@ class EsportsViewModel(
         if (_currentUser.value?.isAdmin == true) {
             FirebaseDatabase.getInstance().getReference("users").child(emailKey)
                 .child("banned").setValue(bannedState)
+        }
+    }
+
+    fun adminRevokeReferralRewards(emailKey: String) {
+        if (_currentUser.value?.isAdmin == true) {
+            val u = allUsers.value.find { it.emailKey == emailKey }
+            if (u != null) {
+                val updatedUser = u.copy(
+                    totalReferrals = 0,
+                    bonusWallet = 0.0,
+                    coins = if (u.coins > 100) u.coins - 100 else 0.0
+                )
+                syncManager.saveUserDirectly(updatedUser)
+                // Blacklist this deviceID globally
+                FirebaseDatabase.getInstance().getReference("spam_devices").child(u.deviceId).setValue(true)
+            }
         }
     }
 
