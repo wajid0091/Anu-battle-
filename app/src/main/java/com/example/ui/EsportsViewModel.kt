@@ -438,10 +438,13 @@ class EsportsViewModel(
                                                     if (uD == deviceId) deviceAccountsCount++
                                                 }
                                                 
-                                                // If more than 1 existing account, limit reached (allowed: first 2 total)
-                                                if (deviceAccountsCount < 2) {
+                                                // If more than 0 existing accounts, limit reached (allowed: only 1 per device)
+                                                if (deviceAccountsCount == 0) {
                                                     validReferralUserKey = referee.emailKey
                                                     grantReferBonus = true
+                                                } else {
+                                                    // Automatically flag device as spam if someone makes multiple accounts
+                                                    FirebaseDatabase.getInstance().getReference("spam_devices").child(deviceId).setValue(true)
                                                 }
                                             }
                                         }
@@ -555,44 +558,61 @@ class EsportsViewModel(
     // 7-Day Claims Log Flow
     fun claimDailyReward(onError: (String) -> Unit) {
         val user = _currentUser.value ?: return
-        val now = System.currentTimeMillis()
-        val oneDayMillis = 24 * 60 * 60 * 1000L
         
-        var currentDay = if (now - user.lastDailyRewardTime > 2 * oneDayMillis && user.lastDailyRewardTime > 0) 1 else user.dailyRewardDay
-        
-        // Prevent claiming early
-        if (now - user.lastDailyRewardTime < oneDayMillis && user.lastDailyRewardTime > 0) {
-            val diff = oneDayMillis - (now - user.lastDailyRewardTime)
-            val hours = diff / (60 * 60 * 1000L)
-            val minutes = (diff % (60 * 60 * 1000L)) / (60 * 1000L)
-            onError("Next reward available in ${hours}h ${minutes}m.")
-            return
-        }
-        
-        val rewardsList = _dbDailyRewards.value
-        val coinsReward = rewardsList.getOrElse(currentDay - 1) { 5.0 }
-        
-        val nextDay = if (currentDay >= 7) 1 else currentDay + 1
-        
-        val updatedUser = user.copy(
-            coins = user.coins + coinsReward,
-            dailyRewardDay = nextDay,
-            lastDailyRewardTime = now
-        )
-        syncManager.saveUserDirectly(updatedUser)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val spamRef = FirebaseDatabase.getInstance().getReference("spam_devices").child(user.deviceId).get().await()
+                if (spamRef.exists() && spamRef.getValue(Boolean::class.java) == true) {
+                    withContext(Dispatchers.Main) {
+                        onError("Device is blocked from rewards (Duplicate Accounts Detected).")
+                    }
+                    return@launch
+                }
 
-        val tx = TransactionRecordEntity(
-            id = "claim_${user.emailKey}_day${currentDay}_${UUID.randomUUID()}",
-            emailKey = user.emailKey,
-            type = "REWARD_CLAIM",
-            amount = 0.0,
-            coins = coinsReward,
-            status = "SUCCESS",
-            timestamp = now,
-            details = "Day $currentDay reward claimed",
-            screenshotUrl = ""
-        )
-        syncManager.saveTransactionDirectly(tx)
+                withContext(Dispatchers.Main) {
+                    val now = System.currentTimeMillis()
+                    val oneDayMillis = 24 * 60 * 60 * 1000L
+                    
+                    var currentDay = if (now - user.lastDailyRewardTime > 2 * oneDayMillis && user.lastDailyRewardTime > 0) 1 else user.dailyRewardDay
+                    
+                    // Prevent claiming early
+                    if (now - user.lastDailyRewardTime < oneDayMillis && user.lastDailyRewardTime > 0) {
+                        val diff = oneDayMillis - (now - user.lastDailyRewardTime)
+                        val hours = diff / (60 * 60 * 1000L)
+                        val minutes = (diff % (60 * 60 * 1000L)) / (60 * 1000L)
+                        onError("Next reward available in ${hours}h ${minutes}m.")
+                        return@withContext
+                    }
+                    
+                    val rewardsList = _dbDailyRewards.value
+                    val coinsReward = rewardsList.getOrElse(currentDay - 1) { 5.0 }
+                    
+                    val nextDay = if (currentDay >= 7) 1 else currentDay + 1
+                    
+                    val updatedUser = user.copy(
+                        coins = user.coins + coinsReward,
+                        dailyRewardDay = nextDay,
+                        lastDailyRewardTime = now
+                    )
+                    syncManager.saveUserDirectly(updatedUser)
+
+                    val tx = TransactionRecordEntity(
+                        id = "claim_${user.emailKey}_day${currentDay}_${UUID.randomUUID()}",
+                        emailKey = user.emailKey,
+                        type = "REWARD_CLAIM",
+                        amount = 0.0,
+                        coins = coinsReward,
+                        status = "SUCCESS",
+                        timestamp = now,
+                        details = "Day $currentDay reward claimed",
+                        screenshotUrl = ""
+                    )
+                    syncManager.saveTransactionDirectly(tx)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     fun incrementTournamentAdWatched(tournamentId: String) {
@@ -725,6 +745,14 @@ class EsportsViewModel(
         saveTaskProgressByAction("WATCH_AD", 1) // Also track ad watch tasks
         
         viewModelScope.launch(Dispatchers.IO) {
+            val spamRef = FirebaseDatabase.getInstance().getReference("spam_devices").child(user.deviceId).get().await()
+            if (spamRef.exists() && spamRef.getValue(Boolean::class.java) == true) {
+                withContext(Dispatchers.Main) { 
+                    android.widget.Toast.makeText(context, "Device is blocked from rewards (Duplicate Accounts).", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+
             // Grant dynamic reward for watching ad
             val rewardCoins = if (tournamentId == "rewards_wallet_watch") {
                 (10..25).random().toDouble()
@@ -1020,6 +1048,12 @@ class EsportsViewModel(
     fun manuallyClaimTaskReward(taskId: String, onComplete: (Boolean, String) -> Unit) {
         val user = _currentUser.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
+            val spamRef = FirebaseDatabase.getInstance().getReference("spam_devices").child(user.deviceId).get().await()
+            if (spamRef.exists() && spamRef.getValue(Boolean::class.java) == true) {
+                withContext(Dispatchers.Main) { onComplete(false, "Device is blocked from rewards (Duplicate Accounts Detected).") }
+                return@launch
+            }
+
             val taskTemplate = dailyTasks.value.find { it.id == taskId }
             if (taskTemplate == null) {
                 withContext(Dispatchers.Main) { onComplete(false, "Task not found") }

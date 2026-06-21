@@ -363,7 +363,7 @@ fun HeaderBox(
                         }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Inbox,
+                            imageVector = Icons.Default.Email,
                             contentDescription = "Alerts",
                             tint = Color.White
                         )
@@ -3617,15 +3617,21 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
     if (showSpamAlertsDialog) {
         AlertDialog(
             onDismissRequest = { showSpamAlertsDialog = false },
-            title = { Text("Spam Alerts (Multiple Accounts on Same Device)", color = Color.White) },
+            title = { Text("Spam Alerts (Duplicate Accounts)", color = Color.White) },
             text = {
                 LazyColumn {
-                    items(users.filter { spamDeviceIds.contains(it.deviceId) }) { spammer ->
-                        Column(modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth()) {
-                            Text(text = "Name: ${spammer.name}", color = Color.White, fontWeight = FontWeight.Bold)
-                            Text(text = "Email: ${spammer.email}", color = Color.LightGray, fontSize = 12.sp)
-                            Text(text = "Device ID: ${spammer.deviceId}", color = NeonOrange, fontSize = 10.sp)
-                            HorizontalDivider(modifier = Modifier.padding(top = 4.dp), color = Color.DarkGray)
+                    val groupedSpammers = users.filter { spamDeviceIds.contains(it.deviceId) }.groupBy { it.deviceId }
+                    items(groupedSpammers.entries.toList()) { entry ->
+                        val device = entry.key
+                        val duplicateUsers = entry.value
+                        Column(modifier = Modifier.padding(vertical = 8.dp).fillMaxWidth()) {
+                            Text(text = "Device ID: $device", color = NeonOrange, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text(text = "Accounts Created: ${duplicateUsers.size}", color = Color.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            duplicateUsers.forEach { spammer ->
+                                Text(text = "• ${spammer.name} (${spammer.email})", color = Color.LightGray, fontSize = 12.sp)
+                            }
+                            HorizontalDivider(modifier = Modifier.padding(top = 8.dp), color = Color.DarkGray)
                         }
                     }
                 }
@@ -3688,6 +3694,7 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
                             Column {
                                 Text(text = u.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 Text(text = u.email, color = GrayText, fontSize = 11.sp)
+                                Text(text = "Device: ${if (u.deviceId.length > 15) u.deviceId.take(15) + "..." else u.deviceId}", color = NeonOrange, fontSize = 9.sp)
                             }
                             // Ban / Unban Toggle Button
                             Card(
