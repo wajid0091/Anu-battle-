@@ -152,7 +152,7 @@ fun EsportsApp(viewModel: EsportsViewModel) {
                     .fillMaxSize()
                     .background(CharcoalBg)
             ) {
-                if (inAdminMode && user.isAdmin) {
+                if (inAdminMode && (user.isAdmin || user.isHostManager)) {
                     Box(modifier = Modifier.padding(innerPadding)) {
                         AdminDashboardScreen(
                             viewModel = viewModel,
@@ -3621,14 +3621,20 @@ fun AdminDashboardScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
                 .weight(1f)
                 .padding(horizontal = 14.dp)
         ) {
-            when (adminTab) {
-                "Users" -> AdminUsersTab(viewModel)
-                "Add Tourney" -> AdminTournamentsCreatorTab(viewModel)
-                "Task CRUD" -> AdminTaskCRUDTab(viewModel)
-                "Diamond CRUD" -> AdminDiamondCRUDTab(viewModel)
-                "Settings" -> AdminSettingsTab(viewModel)
-                "Deposit/Withdraw Queue" -> AdminTransactionsQueueTab(viewModel)
-                "Promos" -> AdminPromosTab(viewModel)
+            if (adminTabs.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("You do not have permission to view any pages.", color = Color.Gray, fontSize = 14.sp)
+                }
+            } else {
+                when (adminTab) {
+                    "Users" -> AdminUsersTab(viewModel)
+                    "Add Tourney" -> AdminTournamentsCreatorTab(viewModel)
+                    "Task CRUD" -> AdminTaskCRUDTab(viewModel)
+                    "Diamond CRUD" -> AdminDiamondCRUDTab(viewModel)
+                    "Settings" -> AdminSettingsTab(viewModel)
+                    "Deposit/Withdraw Queue" -> AdminTransactionsQueueTab(viewModel)
+                    "Promos" -> AdminPromosTab(viewModel)
+                }
             }
         }
     }
@@ -3653,11 +3659,11 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
     var showSpamAlertsDialog by remember { mutableStateOf(false) }
     
     var editingHostManager by remember { mutableStateOf<UserEntity?>(null) }
+    var isHostManagerEnabled by remember { mutableStateOf(false) }
     var hostTournaments by remember { mutableStateOf(false) }
-    var hostUsers by remember { mutableStateOf(false) }
     var hostWithdrawals by remember { mutableStateOf(false) }
-    var hostAnnouncements by remember { mutableStateOf(false) }
     var hostManagedTournaments by remember { mutableStateOf("") }
+    var expandTournaments by remember { mutableStateOf(false) }
 
     val spamDeviceIds = users.groupBy { it.deviceId }.filter { it.value.size > 1 }.map { it.key }
     val filteredUsers = users.filter { u ->
@@ -3822,20 +3828,23 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
                                 Text("Balances", color = CharcoalBg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
 
-                            Button(
-                                onClick = {
-                                    editingHostManager = u
-                                    hostTournaments = u.hostTournaments
-                                    hostUsers = u.hostUsers
-                                    hostWithdrawals = u.hostWithdrawals
-                                    hostAnnouncements = u.hostAnnouncements
-                                    hostManagedTournaments = u.managedTournamentIds
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)),
-                                shape = RoundedCornerShape(6.dp),
-                                modifier = Modifier.weight(1f).padding(start = 2.dp)
-                            ) {
-                                Text("Host Mngr", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+                            if (currentUser?.isAdmin == true) {
+                                Button(
+                                    onClick = {
+                                        editingHostManager = u
+                                        isHostManagerEnabled = u.isHostManager
+                                        hostTournaments = u.hostTournaments
+                                        hostWithdrawals = u.hostWithdrawals
+                                        hostManagedTournaments = u.managedTournamentIds
+                                        expandTournaments = false
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.weight(1f).padding(start = 2.dp)
+                                ) {
+                                    Text("Host Mngr", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -3852,42 +3861,47 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
                     Text(text = "Host Manager Settings: ${user.name}", color = Color(0xFF9C27B0), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(14.dp))
                     
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = hostTournaments, onCheckedChange = { hostTournaments = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF9C27B0)))
-                        Text("Manage Tournaments", color = Color.White)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(text = "Enable Host Manager Role", color = Color.White, fontWeight = FontWeight.Bold)
+                        Switch(checked = isHostManagerEnabled, onCheckedChange = { isHostManagerEnabled = it }, colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF9C27B0), checkedTrackColor = Color(0xFF9C27B0).copy(alpha = 0.5f)))
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = hostUsers, onCheckedChange = { hostUsers = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF9C27B0)))
-                        Text("Manage Users", color = Color.White)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = hostWithdrawals, onCheckedChange = { hostWithdrawals = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF9C27B0)))
-                        Text("Manage Withdrawals", color = Color.White)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = hostAnnouncements, onCheckedChange = { hostAnnouncements = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF9C27B0)))
-                        Text("Manage Announcements", color = Color.White)
-                    }
+                    Divider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 8.dp))
                     
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text("Specific Tournaments Edit Access:", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text("If none selected, they can add/edit ALL tournaments.", color = GrayText, fontSize = 10.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    val currentManagedIds = hostManagedTournaments.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableSet()
-                    
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        allTournaments.forEach { t ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = currentManagedIds.contains(t.id),
-                                    onCheckedChange = { isChecked ->
-                                        if (isChecked) currentManagedIds.add(t.id) else currentManagedIds.remove(t.id)
-                                        hostManagedTournaments = currentManagedIds.joinToString(",")
-                                    },
-                                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF9C27B0))
-                                )
-                                Text("${t.title} (${t.status})", color = Color.White, fontSize = 12.sp)
+                    if (isHostManagerEnabled) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = hostTournaments, onCheckedChange = { hostTournaments = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF9C27B0)))
+                            Text("Manage Tournaments", color = Color.White)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = hostWithdrawals, onCheckedChange = { hostWithdrawals = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF9C27B0)))
+                            Text("Manage Withdrawals", color = Color.White)
+                        }
+                        
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { expandTournaments = !expandTournaments }.padding(vertical = 4.dp)) {
+                            Text("Specific Tournaments Edit Access", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Icon(imageVector = if (expandTournaments) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = "Expand", tint = Color.White)
+                        }
+                        Text("If none selected, they can add/edit ALL tournaments.", color = GrayText, fontSize = 10.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        if (expandTournaments) {
+                            val currentManagedIds = hostManagedTournaments.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableSet()
+                            
+                            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp)) {
+                                allTournaments.forEach { t ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = currentManagedIds.contains(t.id),
+                                            onCheckedChange = { isChecked ->
+                                                if (isChecked) currentManagedIds.add(t.id) else currentManagedIds.remove(t.id)
+                                                hostManagedTournaments = currentManagedIds.joinToString(",")
+                                            },
+                                            colors = CheckboxDefaults.colors(checkedColor = Color(0xFF9C27B0))
+                                        )
+                                        Text("${t.title} (${t.status})", color = Color.White, fontSize = 12.sp)
+                                    }
+                                }
                             }
                         }
                     }
@@ -3897,14 +3911,13 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
                         TextButton(onClick = { editingHostManager = null }) { Text("Cancel", color = Color.Gray) }
                         Button(
                             onClick = {
-                                val isHost = hostTournaments || hostUsers || hostWithdrawals || hostAnnouncements
                                 viewModel.adminSetHostPermissions(
                                     emailKey = user.emailKey,
-                                    isHostManager = isHost,
+                                    isHostManager = isHostManagerEnabled,
                                     hostTournaments = hostTournaments,
-                                    hostUsers = hostUsers,
+                                    hostUsers = false,
                                     hostWithdrawals = hostWithdrawals,
-                                    hostAnnouncements = hostAnnouncements,
+                                    hostAnnouncements = false,
                                     managedTournamentIds = hostManagedTournaments.trim()
                                 )
                                 editingHostManager = null
@@ -4118,7 +4131,7 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
         }
     }
 
-    val canCreate = user?.isAdmin == true || user?.managedTournamentIds.isNullOrBlank()
+    val canCreate = user?.isAdmin == true
 
     Column(
         modifier = Modifier

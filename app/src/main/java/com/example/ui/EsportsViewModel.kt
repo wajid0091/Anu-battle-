@@ -1274,9 +1274,13 @@ class EsportsViewModel(
     // ============================================
 
     fun adminCreateTournament(t: TournamentEntity) {
-        if (_currentUser.value?.isAdmin == true) {
+        val user = _currentUser.value
+        val isManaged = user?.managedTournamentIds?.split(",")?.map { it.trim() }?.contains(t.id) == true
+        if (user?.isAdmin == true || (user?.isHostManager == true && user.hostTournaments == true && (user.managedTournamentIds.isBlank() || isManaged))) {
             syncManager.saveTournamentDirectly(t)
-            adminSendAnnouncement("New Tournament!", "A new tournament '${t.title}' has been scheduled. Join now!")
+            if (user?.isAdmin == true) {
+                adminSendAnnouncement("New Tournament!", "A new tournament '${t.title}' has been scheduled. Join now!")
+            }
         }
     }
 
@@ -1288,7 +1292,9 @@ class EsportsViewModel(
 
     fun adminDistributeTournamentReward(tournamentId: String, distributions: Map<String, Double>, onComplete: (String) -> Unit) {
         val admin = _currentUser.value ?: return
-        if (!admin.isAdmin) return
+        val isManaged = admin.managedTournamentIds.split(",").map { it.trim() }.contains(tournamentId)
+        val canManage = admin.isAdmin || (admin.isHostManager && admin.hostTournaments && (admin.managedTournamentIds.isBlank() || isManaged))
+        if (!canManage) return
         
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val t = tournaments.value.find { it.id == tournamentId }
@@ -1339,7 +1345,9 @@ class EsportsViewModel(
 
     fun adminKickPlayerFromTournament(tournamentId: String, emailKey: String, onComplete: (String) -> Unit) {
         val admin = _currentUser.value ?: return
-        if (!admin.isAdmin) return
+        val isManaged = admin.managedTournamentIds.split(",").map { it.trim() }.contains(tournamentId)
+        val canManage = admin.isAdmin || (admin.isHostManager && admin.hostTournaments && (admin.managedTournamentIds.isBlank() || isManaged))
+        if (!canManage) return
         
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val t = tournaments.value.find { it.id == tournamentId }
@@ -1542,13 +1550,15 @@ class EsportsViewModel(
     }
 
     fun initiateAdminSync() {
-        if (_currentUser.value?.isAdmin == true) {
+        val user = _currentUser.value
+        if (user?.isAdmin == true || user?.isHostManager == true) {
             syncManager.startAdminAllUsersSync()
         }
     }
 
     fun adminBanControlUser(emailKey: String, bannedState: Boolean) {
-        if (_currentUser.value?.isAdmin == true) {
+        val user = _currentUser.value
+        if (user?.isAdmin == true || (user?.isHostManager == true && user.hostUsers == true)) {
             FirebaseDatabase.getInstance().getReference("users").child(emailKey)
                 .child("banned").setValue(bannedState)
         }
@@ -1635,7 +1645,8 @@ class EsportsViewModel(
     }
 
     fun adminAdjustUserWallets(emailKey: String, main: Double, bonus: Double, winning: Double, coins: Double) {
-        if (_currentUser.value?.isAdmin == true) {
+        val user = _currentUser.value
+        if (user?.isAdmin == true || (user?.isHostManager == true && user.hostUsers == true)) {
             val ref = FirebaseDatabase.getInstance().getReference("users").child(emailKey)
             ref.child("mainWallet").setValue(main)
             ref.child("bonusWallet").setValue(bonus)
