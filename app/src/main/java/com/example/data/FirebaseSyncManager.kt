@@ -381,17 +381,29 @@ private fun DataSnapshot.toUserEntity(): UserEntity? {
         val password = child("password").getValue(String::class.java) ?: ""
         val gameUid = child("gameUid").getValue(String::class.java) ?: ""
         val referCode = child("referCode").getValue(String::class.java) ?: ""
+        val referredBy = child("referredBy").getValue(String::class.java) ?: ""
+        val deviceId = child("deviceId").getValue(String::class.java) ?: ""
+        val totalReferrals = child("totalReferrals").getValue(Int::class.java) ?: 0
         val inboxMessage = child("inboxMessage").getValue(String::class.java) ?: ""
         val lastGameUidChangeTime = child("lastGameUidChangeTime").getValue(Long::class.java) ?: 0L
         val joinedTournaments = child("joinedTournaments").getValue(String::class.java) ?: ""
         val dailyRewardDay = child("dailyRewardDay").getValue(Int::class.java) ?: 1
         val lastDailyRewardTime = child("lastDailyRewardTime").getValue(Long::class.java) ?: 0L
+        val isHostManager = child("isHostManager").getValue(Boolean::class.java) ?: false
+        val hostTournaments = child("hostTournaments").getValue(Boolean::class.java) ?: false
+        val hostUsers = child("hostUsers").getValue(Boolean::class.java) ?: false
+        val hostWithdrawals = child("hostWithdrawals").getValue(Boolean::class.java) ?: false
+        val hostAnnouncements = child("hostAnnouncements").getValue(Boolean::class.java) ?: false
+        val managedTournamentIds = child("managedTournamentIds").getValue(String::class.java) ?: ""
         UserEntity(
             emailKey = emailKey, name = name, email = email, mainWallet = mainWallet, bonusWallet = bonusWallet,
             winningWallet = winningWallet, coins = coins, matchesPlayed = matchesPlayed, matchesWon = matchesWon,
             banned = banned, isAdmin = isAdmin, password = password, gameUid = gameUid, referCode = referCode,
+            referredBy = referredBy, deviceId = deviceId, totalReferrals = totalReferrals,
             inboxMessage = inboxMessage, lastGameUidChangeTime = lastGameUidChangeTime,
-            joinedTournaments = joinedTournaments, dailyRewardDay = dailyRewardDay, lastDailyRewardTime = lastDailyRewardTime
+            joinedTournaments = joinedTournaments, dailyRewardDay = dailyRewardDay, lastDailyRewardTime = lastDailyRewardTime,
+            isHostManager = isHostManager, hostTournaments = hostTournaments, hostUsers = hostUsers,
+            hostWithdrawals = hostWithdrawals, hostAnnouncements = hostAnnouncements, managedTournamentIds = managedTournamentIds
         )
     } catch (e: Exception) {
         null

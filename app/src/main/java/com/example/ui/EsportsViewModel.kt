@@ -1609,6 +1609,28 @@ class EsportsViewModel(
         }
     }
 
+    fun adminSetHostPermissions(
+        emailKey: String, 
+        isHostManager: Boolean, 
+        hostTournaments: Boolean, 
+        hostUsers: Boolean, 
+        hostWithdrawals: Boolean, 
+        hostAnnouncements: Boolean, 
+        managedTournamentIds: String
+    ) {
+        if (_currentUser.value?.isAdmin == true) {
+            val updates = mapOf(
+                "isHostManager" to isHostManager,
+                "hostTournaments" to hostTournaments,
+                "hostUsers" to hostUsers,
+                "hostWithdrawals" to hostWithdrawals,
+                "hostAnnouncements" to hostAnnouncements,
+                "managedTournamentIds" to managedTournamentIds
+            )
+            FirebaseDatabase.getInstance().getReference("users").child(emailKey).updateChildren(updates)
+        }
+    }
+
     fun markNotificationsAsRead() {
         val user = _currentUser.value ?: return
         viewModelScope.launch(Dispatchers.IO) {

@@ -26,7 +26,13 @@ data class UserEntity(
     val lastGameUidChangeTime: Long = 0L,
     val joinedTournaments: String = "",
     val dailyRewardDay: Int = 1,
-    val lastDailyRewardTime: Long = 0L
+    val lastDailyRewardTime: Long = 0L,
+    val isHostManager: Boolean = false,
+    val hostTournaments: Boolean = false,
+    val hostUsers: Boolean = false,
+    val hostWithdrawals: Boolean = false,
+    val hostAnnouncements: Boolean = false,
+    val managedTournamentIds: String = ""
 )
 
 @Entity(tableName = "tournaments")

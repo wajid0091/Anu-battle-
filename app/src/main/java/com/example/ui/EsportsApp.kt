@@ -3513,8 +3513,28 @@ fun ProfileTile(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminDashboardScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
-    var adminTab by remember { mutableStateOf("Users") }
-    val adminTabs = listOf("Users", "Add Tourney", "Task CRUD", "Diamond CRUD", "Settings", "Deposit/Withdraw Queue", "Promos")
+    val user by viewModel.currentUser.collectAsStateWithLifecycle()
+    val fullTabs = listOf("Users", "Add Tourney", "Task CRUD", "Diamond CRUD", "Settings", "Deposit/Withdraw Queue", "Promos")
+    
+    val adminTabs = remember(user) {
+        if (user?.isAdmin == true) {
+            fullTabs
+        } else if (user?.isHostManager == true) {
+            val allowed = mutableListOf<String>()
+            if (user?.hostUsers == true) allowed.add("Users")
+            if (user?.hostTournaments == true) allowed.add("Add Tourney")
+            if (user?.hostWithdrawals == true) allowed.add("Deposit/Withdraw Queue")
+            if (user?.hostAnnouncements == true) {
+                // Not mapped directly to a single tab but typically Settings or Promos might have announcements
+                allowed.add("Settings")
+            }
+            allowed
+        } else {
+            emptyList()
+        }
+    }
+    
+    var adminTab by remember(adminTabs) { mutableStateOf(adminTabs.firstOrNull() ?: "Users") }
 
     LaunchedEffect(Unit) {
         viewModel.initiateAdminSync()
@@ -3608,6 +3628,13 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
     var broadcastTitle by remember { mutableStateOf("") }
     var broadcastMessage by remember { mutableStateOf("") }
     var showSpamAlertsDialog by remember { mutableStateOf(false) }
+    
+    var editingHostManager by remember { mutableStateOf<UserEntity?>(null) }
+    var hostTournaments by remember { mutableStateOf(false) }
+    var hostUsers by remember { mutableStateOf(false) }
+    var hostWithdrawals by remember { mutableStateOf(false) }
+    var hostAnnouncements by remember { mutableStateOf(false) }
+    var hostManagedTournaments by remember { mutableStateOf("") }
 
     val spamDeviceIds = users.groupBy { it.deviceId }.filter { it.value.size > 1 }.map { it.key }
     val filteredUsers = users.filter { u ->
@@ -3739,9 +3766,9 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
                                 onClick = { viewFullDetailsUser = u },
                                 colors = ButtonDefaults.buttonColors(containerColor = DefaultBlue),
                                 shape = RoundedCornerShape(6.dp),
-                                modifier = Modifier.weight(1f).padding(end = 4.dp)
+                                modifier = Modifier.weight(1f).padding(end = 2.dp)
                             ) {
-                                Text("Full Details", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Details", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                             
                             Button(
@@ -3754,11 +3781,87 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
                                 shape = RoundedCornerShape(6.dp),
-                                modifier = Modifier.weight(1f).padding(start = 4.dp)
+                                modifier = Modifier.weight(1f).padding(horizontal = 2.dp)
                             ) {
-                                Text("Adjust Balances", color = CharcoalBg, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Balances", color = CharcoalBg, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    editingHostManager = u
+                                    hostTournaments = u.hostTournaments
+                                    hostUsers = u.hostUsers
+                                    hostWithdrawals = u.hostWithdrawals
+                                    hostAnnouncements = u.hostAnnouncements
+                                    hostManagedTournaments = u.managedTournamentIds
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.weight(1f).padding(start = 2.dp)
+                            ) {
+                                Text("Host Mngr", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    if (editingHostManager != null) {
+        val user = editingHostManager!!
+        Dialog(onDismissRequest = { editingHostManager = null }) {
+            Card(colors = CardDefaults.cardColors(containerColor = CharcoalCard), shape = RoundedCornerShape(16.dp)) {
+                Column(modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState())) {
+                    Text(text = "Host Manager Settings: ${user.name}", color = Color(0xFF9C27B0), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(14.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = hostTournaments, onCheckedChange = { hostTournaments = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF9C27B0)))
+                        Text("Manage Tournaments", color = Color.White)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = hostUsers, onCheckedChange = { hostUsers = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF9C27B0)))
+                        Text("Manage Users", color = Color.White)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = hostWithdrawals, onCheckedChange = { hostWithdrawals = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF9C27B0)))
+                        Text("Manage Withdrawals", color = Color.White)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = hostAnnouncements, onCheckedChange = { hostAnnouncements = it }, colors = CheckboxDefaults.colors(checkedColor = Color(0xFF9C27B0)))
+                        Text("Manage Announcements", color = Color.White)
+                    }
+                    
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text("Managed Tournament IDs (Comma Separated)", color = Color.White, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = hostManagedTournaments, 
+                        onValueChange = { hostManagedTournaments = it }, 
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), 
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("If empty but 'Manage Tournaments' is checked, they can manage ALL tournaments.", color = GrayText, fontSize = 10.sp)
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { editingHostManager = null }) { Text("Cancel", color = Color.Gray) }
+                        Button(
+                            onClick = {
+                                val isHost = hostTournaments || hostUsers || hostWithdrawals || hostAnnouncements
+                                viewModel.adminSetHostPermissions(
+                                    emailKey = user.emailKey,
+                                    isHostManager = isHost,
+                                    hostTournaments = hostTournaments,
+                                    hostUsers = hostUsers,
+                                    hostWithdrawals = hostWithdrawals,
+                                    hostAnnouncements = hostAnnouncements,
+                                    managedTournamentIds = hostManagedTournaments.trim()
+                                )
+                                editingHostManager = null
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0))
+                        ) { Text("Save Permissions", color = Color.White) }
                     }
                 }
             }
@@ -3902,7 +4005,17 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
 
 @Composable
 fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
-    val tournaments by viewModel.tournaments.collectAsStateWithLifecycle()
+    val user by viewModel.currentUser.collectAsStateWithLifecycle()
+    val allTournaments by viewModel.tournaments.collectAsStateWithLifecycle()
+    
+    val tournaments = remember(allTournaments, user) {
+        if (user?.isAdmin == true || user?.managedTournamentIds.isNullOrBlank()) {
+            allTournaments
+        } else {
+            val managedIds = user?.managedTournamentIds?.split(",")?.map { it.trim() } ?: emptyList()
+            allTournaments.filter { managedIds.contains(it.id) }
+        }
+    }
     
     var showDialog by remember { mutableStateOf(false) }
     var editingTournamentId by remember { mutableStateOf<String?>(null) }
@@ -3955,44 +4068,48 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
         }
     }
 
+    val canCreate = user?.isAdmin == true || user?.managedTournamentIds.isNullOrBlank()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
     ) {
-        Button(
-            onClick = {
-                editingTournamentId = null
-                title = ""
-                entryCurrency = "CASH"
-                prizeCurrency = "CASH"
-                mapType = "Bermuda"
-                entryFee = ""
-                prizePool = ""
-                perKillPrize = ""
-                rankPrizes = ""
-                totalSlots = "100"
-                adsRequired = "3"
-                roomId = ""
-                roomPassword = ""
-                bannerUrl = ""
-                description = ""
-                showRewardIndex = true
-                
-                val cal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.HOUR_OF_DAY, 2) }
-                val yr = cal.get(java.util.Calendar.YEAR)
-                val mo = String.format("%02d", cal.get(java.util.Calendar.MONTH) + 1)
-                val dy = String.format("%02d", cal.get(java.util.Calendar.DAY_OF_MONTH))
-                val hr = String.format("%02d", cal.get(java.util.Calendar.HOUR_OF_DAY))
-                val mn = String.format("%02d", cal.get(java.util.Calendar.MINUTE))
-                scheduleDate = "$yr-$mo-$dy"
-                scheduleTime = "$hr:$mn"
-                
-                showDialog = true
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-        ) {
-            Text("ADD NEW TOURNAMENT", color = Color.White, fontWeight = FontWeight.Bold)
+        if (canCreate) {
+            Button(
+                onClick = {
+                    editingTournamentId = null
+                    title = ""
+                    entryCurrency = "CASH"
+                    prizeCurrency = "CASH"
+                    mapType = "Bermuda"
+                    entryFee = ""
+                    prizePool = ""
+                    perKillPrize = ""
+                    rankPrizes = ""
+                    totalSlots = "100"
+                    adsRequired = "3"
+                    roomId = ""
+                    roomPassword = ""
+                    bannerUrl = ""
+                    description = ""
+                    showRewardIndex = true
+                    
+                    val cal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.HOUR_OF_DAY, 2) }
+                    val yr = cal.get(java.util.Calendar.YEAR)
+                    val mo = String.format("%02d", cal.get(java.util.Calendar.MONTH) + 1)
+                    val dy = String.format("%02d", cal.get(java.util.Calendar.DAY_OF_MONTH))
+                    val hr = String.format("%02d", cal.get(java.util.Calendar.HOUR_OF_DAY))
+                    val mn = String.format("%02d", cal.get(java.util.Calendar.MINUTE))
+                    scheduleDate = "$yr-$mo-$dy"
+                    scheduleTime = "$hr:$mn"
+                    
+                    showDialog = true
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+            ) {
+                Text("ADD NEW TOURNAMENT", color = Color.White, fontWeight = FontWeight.Bold)
+            }
         }
 
         Text(text = "Existing Playrooms List", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
