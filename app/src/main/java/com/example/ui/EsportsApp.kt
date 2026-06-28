@@ -179,7 +179,7 @@ fun EsportsApp(viewModel: EsportsViewModel) {
                             HeaderBox(
                                 user = user,
                                 viewModel = viewModel,
-                                onAdminClick = { if (user.isAdmin) inAdminMode = true },
+                                onAdminClick = { if (user.isAdmin || user.isHostManager) inAdminMode = true },
                                 onNotificationClick = { inNotificationsMode = true }
                             )
 
@@ -196,7 +196,7 @@ fun EsportsApp(viewModel: EsportsViewModel) {
                                     )
                                     "store" -> StoreScreen(viewModel = viewModel)
                                     "rewards" -> RewardsScreen(viewModel = viewModel)
-                                    "profile" -> ProfileScreen(viewModel = viewModel, onLogout = { viewModel.logout() }, onNavigateToReferrals = { 
+                                    "profile" -> ProfileScreen(viewModel = viewModel, onLogout = { viewModel.logout() }, onNavigateToAdmin = { inAdminMode = true }, onNavigateToReferrals = { 
                                         previousScreen = activeScreen
                                         activeScreen = "referrals" 
                                     })
@@ -3156,7 +3156,7 @@ fun ReferralsScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
     }
 }
 @Composable
-fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit, onNavigateToReferrals: () -> Unit) {
+fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit, onNavigateToAdmin: () -> Unit, onNavigateToReferrals: () -> Unit) {
     val context = LocalContext.current
     val userState by viewModel.currentUser.collectAsStateWithLifecycle()
     val user = userState ?: return
@@ -3278,12 +3278,24 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit, onNavigateT
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = user.name,
-                color = Color.White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = user.name,
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                if (user.isHostManager) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFF9C27B0), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("HOST MANAGER", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
             Text(
                 text = user.email,
                 color = GrayText,
@@ -3379,6 +3391,16 @@ fun ProfileScreen(viewModel: EsportsViewModel, onLogout: () -> Unit, onNavigateT
                 onClick = { showTermsDialogProfile = true }
             )
             Spacer(modifier = Modifier.height(8.dp))
+            if (user.isHostManager) {
+                ProfileTile(
+                    title = "Host Manager Panel",
+                    subtitle = "Access tournament and user management",
+                    icon = Icons.Default.AdminPanelSettings,
+                    onClick = onNavigateToAdmin,
+                    iconColor = Color(0xFF9C27B0)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
             ProfileTile(
                 title = "Logout from Arena",
                 subtitle = "Clear auto registration states",
@@ -3615,6 +3637,7 @@ fun AdminDashboardScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
 @Composable
 fun AdminUsersTab(viewModel: EsportsViewModel) {
     val users by viewModel.allUsers.collectAsStateWithLifecycle()
+    val allTournaments by viewModel.tournaments.collectAsStateWithLifecycle()
     var searchToken by remember { mutableStateOf("") }
     
     var editingUserWallets by remember { mutableStateOf<UserEntity?>(null) }
@@ -3719,9 +3742,22 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
-                                Text(text = u.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(text = u.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    if (u.isHostManager) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .background(Color(0xFF9C27B0), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("HOST", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
                                 Text(text = u.email, color = GrayText, fontSize = 11.sp)
                                 Text(text = "Device: ${if (u.deviceId.length > 15) u.deviceId.take(15) + "..." else u.deviceId}", color = NeonOrange, fontSize = 9.sp)
+                                Text(text = "IP: ${u.ipAddress.ifEmpty { "Unknown" }}", color = MintGreen, fontSize = 9.sp)
                             }
                             // Ban / Unban Toggle Button
                             Card(
@@ -3834,14 +3870,27 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
                     }
                     
                     Spacer(modifier = Modifier.height(14.dp))
-                    Text("Managed Tournament IDs (Comma Separated)", color = Color.White, fontSize = 12.sp)
-                    OutlinedTextField(
-                        value = hostManagedTournaments, 
-                        onValueChange = { hostManagedTournaments = it }, 
-                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White), 
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Text("If empty but 'Manage Tournaments' is checked, they can manage ALL tournaments.", color = GrayText, fontSize = 10.sp)
+                    Text("Specific Tournaments Edit Access:", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text("If none selected, they can add/edit ALL tournaments.", color = GrayText, fontSize = 10.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    val currentManagedIds = hostManagedTournaments.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableSet()
+                    
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        allTournaments.forEach { t ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = currentManagedIds.contains(t.id),
+                                    onCheckedChange = { isChecked ->
+                                        if (isChecked) currentManagedIds.add(t.id) else currentManagedIds.remove(t.id)
+                                        hostManagedTournaments = currentManagedIds.joinToString(",")
+                                    },
+                                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF9C27B0))
+                                )
+                                Text("${t.title} (${t.status})", color = Color.White, fontSize = 12.sp)
+                            }
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(24.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -3915,7 +3964,8 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
                             Spacer(modifier = Modifier.height(8.dp))
                             
                             Text("Game UID: ${user.gameUid}", color = Color.White, fontSize = 14.sp)
-                            Text("Device IP / ID: ${user.deviceId}", color = NeonOrange, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Device ID: ${user.deviceId}", color = NeonOrange, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text("IP Address: ${user.ipAddress.ifEmpty { "Unknown" }}", color = MintGreen, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             if (users.count { it.deviceId == user.deviceId } > 1) {
                                 Text("⚠️ Warning: Multiple accounts on this device!", color = Color.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
@@ -4175,13 +4225,15 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                             ) {
                                 Text("PLAYERS", color = CharcoalBg, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
-                            Button(
-                                onClick = { viewModel.adminDeleteTournament(t.id) },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.7f)),
-                                modifier = Modifier.weight(1f).height(35.dp),
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("DELETE", color = Color.White, fontSize = 11.sp)
+                            if (canCreate) {
+                                Button(
+                                    onClick = { viewModel.adminDeleteTournament(t.id) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.7f)),
+                                    modifier = Modifier.weight(1f).height(35.dp),
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("DELETE", color = Color.White, fontSize = 11.sp)
+                                }
                             }
                         }
                     }

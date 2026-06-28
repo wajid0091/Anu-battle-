@@ -32,7 +32,8 @@ data class UserEntity(
     val hostUsers: Boolean = false,
     val hostWithdrawals: Boolean = false,
     val hostAnnouncements: Boolean = false,
-    val managedTournamentIds: String = ""
+    val managedTournamentIds: String = "",
+    val ipAddress: String = ""
 )
 
 @Entity(tableName = "tournaments")
@@ -291,7 +292,7 @@ interface EsportsDao {
         NotificationEntity::class,
         TournamentAdProgressEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -269,7 +269,17 @@ class EsportsViewModel(
         }
     }
 
+    private fun updateIpAddress(emailKey: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ip = getPublicIpAddress()
+            if (ip != "Unknown") {
+                FirebaseDatabase.getInstance().getReference("users").child(emailKey).child("ipAddress").setValue(ip)
+            }
+        }
+    }
+
     private fun loadUserSession(emailKey: String) {
+        updateIpAddress(emailKey)
         viewModelScope.launch {
             _isLoading.value = true
             syncManager.startUserAndProgressSync(emailKey)
@@ -355,7 +365,14 @@ class EsportsViewModel(
                             isAdmin = snapshot.child("isAdmin").getValue(Boolean::class.java) ?: false || isForcedAdmin,
                             password = savedPassword,
                             gameUid = snapshot.child("gameUid").getValue(String::class.java) ?: "",
-                            referCode = snapshot.child("referCode").getValue(String::class.java) ?: ""
+                            referCode = snapshot.child("referCode").getValue(String::class.java) ?: "",
+                            isHostManager = snapshot.child("isHostManager").getValue(Boolean::class.java) ?: false,
+                            hostTournaments = snapshot.child("hostTournaments").getValue(Boolean::class.java) ?: false,
+                            hostUsers = snapshot.child("hostUsers").getValue(Boolean::class.java) ?: false,
+                            hostWithdrawals = snapshot.child("hostWithdrawals").getValue(Boolean::class.java) ?: false,
+                            hostAnnouncements = snapshot.child("hostAnnouncements").getValue(Boolean::class.java) ?: false,
+                            managedTournamentIds = snapshot.child("managedTournamentIds").getValue(String::class.java) ?: "",
+                            ipAddress = snapshot.child("ipAddress").getValue(String::class.java) ?: ""
                         )
                         
                         if (isForcedAdmin && !(snapshot.child("isAdmin").getValue(Boolean::class.java) ?: false)) {
@@ -382,6 +399,24 @@ class EsportsViewModel(
                     _loginError.value = "Sync Error: ${error.message}"
                 }
             })
+    }
+
+    private suspend fun getPublicIpAddress(): String {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = java.net.URL("https://api.ipify.org")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
+                val reader = java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream))
+                val ip = reader.readLine()
+                reader.close()
+                ip ?: "Unknown"
+            } catch (e: Exception) {
+                "Unknown"
+            }
+        }
     }
 
     fun register(email: String, name: String, password: String, gameUid: String, referCode: String) {

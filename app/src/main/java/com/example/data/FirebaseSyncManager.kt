@@ -395,6 +395,7 @@ private fun DataSnapshot.toUserEntity(): UserEntity? {
         val hostWithdrawals = child("hostWithdrawals").getValue(Boolean::class.java) ?: false
         val hostAnnouncements = child("hostAnnouncements").getValue(Boolean::class.java) ?: false
         val managedTournamentIds = child("managedTournamentIds").getValue(String::class.java) ?: ""
+        val ipAddress = child("ipAddress").getValue(String::class.java) ?: ""
         UserEntity(
             emailKey = emailKey, name = name, email = email, mainWallet = mainWallet, bonusWallet = bonusWallet,
             winningWallet = winningWallet, coins = coins, matchesPlayed = matchesPlayed, matchesWon = matchesWon,
@@ -403,7 +404,8 @@ private fun DataSnapshot.toUserEntity(): UserEntity? {
             inboxMessage = inboxMessage, lastGameUidChangeTime = lastGameUidChangeTime,
             joinedTournaments = joinedTournaments, dailyRewardDay = dailyRewardDay, lastDailyRewardTime = lastDailyRewardTime,
             isHostManager = isHostManager, hostTournaments = hostTournaments, hostUsers = hostUsers,
-            hostWithdrawals = hostWithdrawals, hostAnnouncements = hostAnnouncements, managedTournamentIds = managedTournamentIds
+            hostWithdrawals = hostWithdrawals, hostAnnouncements = hostAnnouncements, managedTournamentIds = managedTournamentIds,
+            ipAddress = ipAddress
         )
     } catch (e: Exception) {
         null
