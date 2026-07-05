@@ -3538,18 +3538,14 @@ fun AdminDashboardScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
     val user by viewModel.currentUser.collectAsStateWithLifecycle()
     val fullTabs = listOf("Users", "Add Tourney", "Task CRUD", "Diamond CRUD", "Settings", "Deposit/Withdraw Queue", "Promos")
     
-    val adminTabs = remember(user) {
+    val adminTabs = remember(user?.isAdmin, user?.isHostManager, user?.hostTournaments, user?.hostWithdrawals) {
         if (user?.isAdmin == true) {
             fullTabs
         } else if (user?.isHostManager == true) {
             val allowed = mutableListOf<String>()
-            if (user?.hostUsers == true) allowed.add("Users")
+            // Host managers can no longer manage users or settings/announcements
             if (user?.hostTournaments == true) allowed.add("Add Tourney")
             if (user?.hostWithdrawals == true) allowed.add("Deposit/Withdraw Queue")
-            if (user?.hostAnnouncements == true) {
-                // Not mapped directly to a single tab but typically Settings or Promos might have announcements
-                allowed.add("Settings")
-            }
             allowed
         } else {
             emptyList()
@@ -3733,7 +3729,7 @@ fun AdminUsersTab(viewModel: EsportsViewModel) {
         Spacer(modifier = Modifier.height(10.dp))
 
         LazyColumn(modifier = Modifier.weight(1f)) {
-            items(filteredUsers) { u ->
+            items(filteredUsers, key = { it.emailKey }) { u ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = CharcoalCard),
                     shape = RoundedCornerShape(12.dp),
