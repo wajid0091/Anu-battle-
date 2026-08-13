@@ -1030,7 +1030,7 @@ fun GamesScreen(viewModel: EsportsViewModel, onSelectTournament: (String) -> Uni
     var gameFilter by remember { mutableStateOf("All") }
     var statusFilter by remember { mutableStateOf("All") }
 
-    val games = listOf("All", "BGMI", "Free Fire", "Lone Wolf", "Call of Duty")
+    val games = listOf("All", "Free Fire", "Clash Squad", "Lone Wolf")
     val statuses = listOf("All", "OPEN", "UPCOMING", "LIVE", "COMPLETED")
 
     val filteredList = tournaments.filter { match ->
@@ -2104,6 +2104,7 @@ fun StoreScreen(viewModel: EsportsViewModel) {
     val minWithdraw by viewModel.minWithdraw.collectAsStateWithLifecycle()
     val diamondPacks by viewModel.diamondPacks.collectAsStateWithLifecycle()
 
+    var selectedDiamondPack by remember { mutableStateOf<com.example.data.DiamondPackEntity?>(null) }
     var showDepositDialog by remember { mutableStateOf(false) }
     var depositAmountText by remember { mutableStateOf("") }
     var selectedMethod by remember { mutableStateOf("Easypaisa") }
@@ -2111,7 +2112,68 @@ fun StoreScreen(viewModel: EsportsViewModel) {
     var senderPhone by remember { mutableStateOf("") }
     var screenshotUrl by remember { mutableStateOf("") }
     var uploadingScreenshot by remember { mutableStateOf(false) }
+    var showAllItems by remember { mutableStateOf(false) }
 
+    if (showAllItems) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { showAllItems = false }) {
+                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                }
+                Text(text = "All Redeem Items", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 16.dp))
+            }
+            
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(diamondPacks) { pack ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = CharcoalCard),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                            if (pack.imageUrl.isNotBlank()) {
+                                AsyncImage(
+                                    model = pack.imageUrl,
+                                    contentDescription = pack.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(60.dp).padding(bottom = 8.dp).clip(RoundedCornerShape(8.dp))
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Diamond,
+                                    contentDescription = "Diamonds",
+                                    tint = NeonGold,
+                                    modifier = Modifier.size(40.dp).padding(bottom = 8.dp)
+                                )
+                            }
+                            Text(text = pack.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(text = "${pack.coinCost} Coins", color = NeonOrange, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Button(
+                                onClick = { selectedDiamondPack = pack },
+                                colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
+                                modifier = Modifier.fillMaxWidth().height(32.dp),
+                                contentPadding = PaddingValues(0.dp),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text("Redeem", color = CharcoalBg, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
     val screenshotPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
     ) { uri ->
@@ -2141,8 +2203,6 @@ fun StoreScreen(viewModel: EsportsViewModel) {
     var withdrawAccNum by remember { mutableStateOf("") }
     var withdrawMethod by remember { mutableStateOf("EasyPaisa") }
     var methodExpanded by remember { mutableStateOf(false) }
-    
-    var selectedDiamondPack by remember { mutableStateOf<com.example.data.DiamondPackEntity?>(null) }
     
     // Diamond Redemption Dialog
     if (selectedDiamondPack != null) {
@@ -2283,13 +2343,27 @@ fun StoreScreen(viewModel: EsportsViewModel) {
         }
 
         item {
-            Text(
-                text = "Redeem Diamonds (Free Fire)",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 24.dp, bottom = 4.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Redeem Diamonds (Free Fire)",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                if (diamondPacks.size > 4) {
+                    Text(
+                        text = "View All",
+                        color = NeonGold,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { showAllItems = true }.padding(4.dp)
+                    )
+                }
+            }
             Text(
                 text = "Directly redeem your collected gameplay coins into Free Fire Diamond items.",
                 color = GrayText,
@@ -2298,7 +2372,8 @@ fun StoreScreen(viewModel: EsportsViewModel) {
             )
         }
 
-        val chunkedPacks = diamondPacks.chunked(2)
+        val displayPacks = if (diamondPacks.size > 4) diamondPacks.take(4) else diamondPacks
+        val chunkedPacks = displayPacks.chunked(2)
         for (rowPacks in chunkedPacks) {
             item {
                 Row(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2306,9 +2381,7 @@ fun StoreScreen(viewModel: EsportsViewModel) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = CharcoalCard),
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f).clickable {
-                                selectedDiamondPack = pack
-                            }
+                            modifier = Modifier.weight(1f)
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(12.dp)) {
                                 if (pack.imageUrl.isNotBlank()) {
@@ -2329,6 +2402,16 @@ fun StoreScreen(viewModel: EsportsViewModel) {
                                 Text(text = pack.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(text = "${pack.coinCost} Coins", color = NeonOrange, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = { selectedDiamondPack = pack },
+                                    colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
+                                    modifier = Modifier.fillMaxWidth().height(32.dp),
+                                    contentPadding = PaddingValues(0.dp),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text("Redeem", color = CharcoalBg, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -2547,6 +2630,7 @@ fun StoreScreen(viewModel: EsportsViewModel) {
             }
         }
     }
+}
 }
 
 data class VoucherPackage(
