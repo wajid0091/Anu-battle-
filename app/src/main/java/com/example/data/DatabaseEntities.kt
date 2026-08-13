@@ -121,7 +121,8 @@ data class TransactionRecordEntity(
 data class DiamondPackEntity(
     @PrimaryKey val id: String,
     val title: String,
-    val coinCost: Int
+    val coinCost: Int,
+    val imageUrl: String = ""
 )
 
 @Entity(tableName = "notifications")
@@ -292,7 +293,7 @@ interface EsportsDao {
         NotificationEntity::class,
         TournamentAdProgressEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -1,5 +1,8 @@
 package com.example.ui
 
+import android.content.Intent
+import android.net.Uri
+import coil.compose.AsyncImage
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -2308,12 +2311,21 @@ fun StoreScreen(viewModel: EsportsViewModel) {
                             }
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                                Icon(
-                                    imageVector = Icons.Default.Diamond,
-                                    contentDescription = "Diamonds",
-                                    tint = NeonGold,
-                                    modifier = Modifier.size(40.dp).padding(bottom = 8.dp)
-                                )
+                                if (pack.imageUrl.isNotBlank()) {
+                                    AsyncImage(
+                                        model = pack.imageUrl,
+                                        contentDescription = pack.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(60.dp).padding(bottom = 8.dp).clip(RoundedCornerShape(8.dp))
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Diamond,
+                                        contentDescription = "Diamonds",
+                                        tint = NeonGold,
+                                        modifier = Modifier.size(40.dp).padding(bottom = 8.dp)
+                                    )
+                                }
                                 Text(text = pack.title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(text = "${pack.coinCost} Coins", color = NeonOrange, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
@@ -2392,6 +2404,12 @@ fun StoreScreen(viewModel: EsportsViewModel) {
                                 val amt = depositAmountText.toDoubleOrNull() ?: 0.0
                                 if (amt > 0.0 && senderName.isNotBlank() && senderPhone.isNotBlank() && screenshotUrl.isNotBlank()) {
                                     viewModel.requestDeposit(amt, screenshotUrl, selectedMethod, senderPhone, senderName)
+                                    val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                        data = Uri.parse("mailto:modspak4@gmail.com")
+                                        putExtra(Intent.EXTRA_SUBJECT, "New Deposit Request from ${user.name}")
+                                        putExtra(Intent.EXTRA_TEXT, "User: ${user.email}\nName: $senderName\nPhone: $senderPhone\nMethod: $selectedMethod\nAmount: Rs.$amt\nScreenshot URL: $screenshotUrl\n\nPlease approve this from the Admin Panel.")
+                                    }
+                                    context.startActivity(Intent.createChooser(intent, "Send email to Admin"))
                                     showDepositDialog = false
                                     depositAmountText = ""
                                     senderName = ""
@@ -2503,6 +2521,14 @@ fun StoreScreen(viewModel: EsportsViewModel) {
                                     val details = "Method: $withdrawMethod | Name: $withdrawAccName | Acc: $withdrawAccNum"
                                     viewModel.requestWithdraw(amt, details) { err ->
                                         Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                                    }
+                                    if (user.winningWallet >= amt) { // Optional check before opening email
+                                        val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                            data = Uri.parse("mailto:modspak4@gmail.com")
+                                            putExtra(Intent.EXTRA_SUBJECT, "New Withdrawal Request from ${user.name}")
+                                            putExtra(Intent.EXTRA_TEXT, "User: ${user.email}\n$details\nAmount: Rs.$amt\n\nPlease approve this from the Admin Panel.")
+                                        }
+                                        context.startActivity(Intent.createChooser(intent, "Send email to Admin"))
                                     }
                                     showWithdrawDialog = false
                                     withdrawAmountText = ""
@@ -5091,25 +5117,42 @@ fun AdminTransactionsQueueTab(viewModel: EsportsViewModel) {
                             
                             Spacer(modifier = Modifier.height(14.dp))
 
+                            val context = LocalContext.current
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.End
                             ) {
                                 Button(
-                                    onClick = { viewModel.adminRejectTransaction(tx) },
+                                    onClick = { 
+                                        viewModel.adminRejectTransaction(tx) 
+                                        val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                            data = Uri.parse("mailto:${tx.emailKey.replace(",", ".")}")
+                                            putExtra(Intent.EXTRA_SUBJECT, "Update on your AnuBattle Request")
+                                            putExtra(Intent.EXTRA_TEXT, "Hello, your request for ${tx.type} has been REJECTED. Please contact support for more details.")
+                                        }
+                                        context.startActivity(Intent.createChooser(intent, "Send Email"))
+                                    },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
                                     shape = RoundedCornerShape(6.dp),
                                     modifier = Modifier.padding(end = 6.dp)
                                 ) {
-                                    Text(text = "REJECT", color = Color.White)
+                                    Text(text = "REJECT & EMAIL", color = Color.White)
                                 }
 
                                 Button(
-                                    onClick = { viewModel.adminApproveTransaction(tx) },
+                                    onClick = { 
+                                        viewModel.adminApproveTransaction(tx)
+                                        val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                            data = Uri.parse("mailto:${tx.emailKey.replace(",", ".")}")
+                                            putExtra(Intent.EXTRA_SUBJECT, "Update on your AnuBattle Request")
+                                            putExtra(Intent.EXTRA_TEXT, "Hello, your request for ${tx.type} has been APPROVED successfully.")
+                                        }
+                                        context.startActivity(Intent.createChooser(intent, "Send Email"))
+                                    },
                                     colors = ButtonDefaults.buttonColors(containerColor = MintGreen),
                                     shape = RoundedCornerShape(6.dp)
                                 ) {
-                                    Text(text = "APPROVE", color = Color.White)
+                                    Text(text = "APPROVE & EMAIL", color = Color.White)
                                 }
                             }
                         }
@@ -5249,6 +5292,7 @@ fun AdminDiamondCRUDTab(viewModel: EsportsViewModel) {
     var editingPackId by remember { mutableStateOf<String?>(null) }
     var title by remember { mutableStateOf("") }
     var coinCost by remember { mutableStateOf("") }
+    var imageUrl by remember { mutableStateOf("") }
 
     val context = LocalContext.current
 
@@ -5260,7 +5304,7 @@ fun AdminDiamondCRUDTab(viewModel: EsportsViewModel) {
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Text(
-                    text = if (editingPackId == null) "Add Diamond Package" else "Edit Diamond Package",
+                    text = if (editingPackId == null) "Add Redeem Item" else "Edit Redeem Item",
                     color = NeonGold,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp
@@ -5270,7 +5314,7 @@ fun AdminDiamondCRUDTab(viewModel: EsportsViewModel) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("Package Title (e.g. 110 Diamonds)") },
+                    label = { Text("Item Title (e.g. Netflix 1 Month)") },
                     colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -5282,6 +5326,15 @@ fun AdminDiamondCRUDTab(viewModel: EsportsViewModel) {
                     label = { Text("Coin Cost (e.g. 100)") },
                     colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                OutlinedTextField(
+                    value = imageUrl,
+                    onValueChange = { imageUrl = it },
+                    label = { Text("Image URL (Optional)") },
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(14.dp))
@@ -5296,19 +5349,21 @@ fun AdminDiamondCRUDTab(viewModel: EsportsViewModel) {
                             val pack = DiamondPackEntity(
                                 id = id,
                                 title = title,
-                                coinCost = cost
+                                coinCost = cost,
+                                imageUrl = imageUrl
                             )
                             viewModel.adminCreateDiamondPack(pack)
-                            Toast.makeText(context, if (editingPackId == null) "Diamond Package added!" else "Diamond Package modified!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, if (editingPackId == null) "Redeem Item added!" else "Redeem Item modified!", Toast.LENGTH_SHORT).show()
                             editingPackId = null
                             title = ""
                             coinCost = ""
+                            imageUrl = ""
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MintGreen),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(text = if (editingPackId == null) "SAVE PACKAGE" else "MODIFY PACKAGE", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(text = if (editingPackId == null) "SAVE ITEM" else "MODIFY ITEM", color = Color.White, fontWeight = FontWeight.Bold)
                 }
                 
                 if (editingPackId != null) {
@@ -5318,6 +5373,7 @@ fun AdminDiamondCRUDTab(viewModel: EsportsViewModel) {
                             editingPackId = null
                             title = ""
                             coinCost = ""
+                            imageUrl = ""
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
                         modifier = Modifier.fillMaxWidth()
@@ -5329,7 +5385,7 @@ fun AdminDiamondCRUDTab(viewModel: EsportsViewModel) {
         }
 
         Spacer(modifier = Modifier.height(20.dp))
-        Text(text = "Existing Diamond Packages", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Text(text = "Existing Redeem Items", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         Spacer(modifier = Modifier.height(10.dp))
 
         LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
@@ -5352,12 +5408,13 @@ fun AdminDiamondCRUDTab(viewModel: EsportsViewModel) {
                                 editingPackId = pack.id
                                 title = pack.title
                                 coinCost = pack.coinCost.toString()
+                                imageUrl = pack.imageUrl
                             }) {
                                 Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit Pack", tint = NeonGold)
                             }
                             IconButton(onClick = {
                                 viewModel.adminDeleteDiamondPack(pack.id)
-                                Toast.makeText(context, "Package Deleted!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Item Deleted!", Toast.LENGTH_SHORT).show()
                             }) {
                                 Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete Pack", tint = Color.Red)
                             }

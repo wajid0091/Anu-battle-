@@ -496,7 +496,8 @@ private fun DataSnapshot.toDiamondPackEntity(): DiamondPackEntity? {
         val id = key ?: ""
         val title = child("title").getValue(String::class.java) ?: ""
         val coinCost = child("coinCost").getValue(Int::class.java) ?: 0
-        DiamondPackEntity(id, title, coinCost)
+        val imageUrl = child("imageUrl").getValue(String::class.java) ?: ""
+        DiamondPackEntity(id, title, coinCost, imageUrl)
     } catch (e: Exception) {
         null
     }

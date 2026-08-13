@@ -72,6 +72,37 @@ class EsportsViewModel(
 
     private val _unityInterstitialId = MutableStateFlow("Interstitial_Android")
     val unityInterstitialId: StateFlow<String> = _unityInterstitialId.asStateFlow()
+    
+    private var isUnityAdLoaded = false
+    private var pendingAdTournamentId: String? = null
+    private var currentAdActivity: android.app.Activity? = null
+    private var currentAdResultCallback: ((Boolean) -> Unit)? = null
+    
+    private fun preloadUnityAd() {
+        val placementId = _unityRewardedId.value.trim()
+        if (placementId.isNotBlank() && UnityAds.isInitialized) {
+            UnityAds.load(placementId, object : IUnityAdsLoadListener {
+                override fun onUnityAdsAdLoaded(placement: String?) {
+                    isUnityAdLoaded = true
+                    Log.d("UnityAds", "Ad Loaded in Background")
+                    // If a user requested it while loading, show it immediately!
+                    val pendingTourney = pendingAdTournamentId
+                    val activity = currentAdActivity
+                    val callback = currentAdResultCallback
+                    if (pendingTourney != null && activity != null && callback != null) {
+                        pendingAdTournamentId = null
+                        currentAdActivity = null
+                        currentAdResultCallback = null
+                        executeShowUnityAd(activity, placementId, pendingTourney, callback)
+                    }
+                }
+                override fun onUnityAdsFailedToLoad(placement: String?, error: UnityAds.UnityAdsLoadError?, message: String?) {
+                    isUnityAdLoaded = false
+                    Log.e("UnityAds", "Ad Failed to Load: $message")
+                }
+            })
+        }
+    }
 
     private val _epNumber = MutableStateFlow("")
     val epNumber: StateFlow<String> = _epNumber.asStateFlow()
@@ -257,6 +288,7 @@ class EsportsViewModel(
                     UnityAds.initialize(context, trimmedGameId, false, object : IUnityAdsInitializationListener {
                         override fun onInitializationComplete() {
                             Log.d("UnityAds", "Unity Ads pre-initialized successfully.")
+                            preloadUnityAd()
                         }
                         override fun onInitializationFailed(error: UnityAds.UnityAdsInitializationError?, msg: String?) {
                             Log.e("UnityAds", "Unity Ads pre-initialization failed: $msg")
@@ -700,70 +732,68 @@ class EsportsViewModel(
         }
     }
 
+    private fun executeShowUnityAd(
+        activity: android.app.Activity,
+        placementId: String,
+        tournamentId: String,
+        onAdShowResult: (Boolean) -> Unit
+    ) {
+        try {
+            UnityAds.show(activity, placementId, UnityAdsShowOptions(), object : IUnityAdsShowListener {
+                override fun onUnityAdsShowFailure(placement: String?, error: UnityAds.UnityAdsShowError?, message: String?) {
+                    activity.runOnUiThread {
+                        android.widget.Toast.makeText(activity, "Failed to present ad: $message. Fetching fallback reward...", android.widget.Toast.LENGTH_SHORT).show()
+                        simulateAdWatch(tournamentId)
+                        onAdShowResult(true)
+                        preloadUnityAd() // Preload next ad
+                    }
+                }
+
+                override fun onUnityAdsShowStart(placement: String?) {}
+                override fun onUnityAdsShowClick(placement: String?) {}
+
+                override fun onUnityAdsShowComplete(placement: String?, state: UnityAds.UnityAdsShowCompletionState?) {
+                    activity.runOnUiThread {
+                        if (state == UnityAds.UnityAdsShowCompletionState.COMPLETED) {
+                            android.widget.Toast.makeText(activity, "Rewarded Video Complete! Coins credited successfully.", android.widget.Toast.LENGTH_SHORT).show()
+                            simulateAdWatch(tournamentId)
+                            onAdShowResult(true)
+                        } else {
+                            android.widget.Toast.makeText(activity, "Ad video skipped before completion.", android.widget.Toast.LENGTH_SHORT).show()
+                            onAdShowResult(false)
+                        }
+                        preloadUnityAd() // Preload next ad
+                    }
+                }
+            })
+        } catch (e: Exception) {
+            Log.e("UnityAds", "Error showing Unity Ad: ${e.message}", e)
+            activity.runOnUiThread {
+                android.widget.Toast.makeText(activity, "Ads presenter issue. Crediting fallback reward...", android.widget.Toast.LENGTH_SHORT).show()
+                simulateAdWatch(tournamentId)
+                onAdShowResult(true)
+                preloadUnityAd() // Preload next ad
+            }
+        }
+    }
+
     private fun loadAndShowUnityAdPlayback(
         activity: android.app.Activity,
         placementId: String,
         tournamentId: String,
         onAdShowResult: (Boolean) -> Unit
     ) {
-        activity.runOnUiThread {
-            android.widget.Toast.makeText(activity, "Loading Unity video ad, please wait...", android.widget.Toast.LENGTH_SHORT).show()
-        }
-
-        try {
-            UnityAds.load(placementId, object : IUnityAdsLoadListener {
-                override fun onUnityAdsAdLoaded(placement: String?) {
-                    try {
-                        UnityAds.show(activity, placementId, UnityAdsShowOptions(), object : IUnityAdsShowListener {
-                            override fun onUnityAdsShowFailure(placement: String?, error: UnityAds.UnityAdsShowError?, message: String?) {
-                                activity.runOnUiThread {
-                                    android.widget.Toast.makeText(activity, "Failed to present ad: $message. Fetching fallback reward...", android.widget.Toast.LENGTH_SHORT).show()
-                                    simulateAdWatch(tournamentId)
-                                    onAdShowResult(true)
-                                }
-                            }
-
-                            override fun onUnityAdsShowStart(placement: String?) {}
-                            override fun onUnityAdsShowClick(placement: String?) {}
-
-                            override fun onUnityAdsShowComplete(placement: String?, state: UnityAds.UnityAdsShowCompletionState?) {
-                                activity.runOnUiThread {
-                                    if (state == UnityAds.UnityAdsShowCompletionState.COMPLETED) {
-                                        android.widget.Toast.makeText(activity, "Rewarded Video Complete! Coins credited successfully.", android.widget.Toast.LENGTH_SHORT).show()
-                                        simulateAdWatch(tournamentId)
-                                        onAdShowResult(true)
-                                    } else {
-                                        android.widget.Toast.makeText(activity, "Ad video skipped before completion.", android.widget.Toast.LENGTH_SHORT).show()
-                                        onAdShowResult(false)
-                                    }
-                                }
-                            }
-                        })
-                    } catch (e: Exception) {
-                        Log.e("UnityAds", "Error showing Unity Ad: ${e.message}", e)
-                        activity.runOnUiThread {
-                            android.widget.Toast.makeText(activity, "Ads presenter issue. Crediting fallback reward...", android.widget.Toast.LENGTH_SHORT).show()
-                            simulateAdWatch(tournamentId)
-                            onAdShowResult(true)
-                        }
-                    }
-                }
-
-                override fun onUnityAdsFailedToLoad(placement: String?, error: UnityAds.UnityAdsLoadError?, message: String?) {
-                    activity.runOnUiThread {
-                        android.widget.Toast.makeText(activity, "Ad load timeout: $message. Applied fallback reward credit successfully.", android.widget.Toast.LENGTH_LONG).show()
-                        simulateAdWatch(tournamentId)
-                        onAdShowResult(true)
-                    }
-                }
-            })
-        } catch (e: Exception) {
-            Log.e("UnityAds", "Error loading Unity Ad: ${e.message}", e)
+        if (isUnityAdLoaded) {
+            isUnityAdLoaded = false
+            executeShowUnityAd(activity, placementId, tournamentId, onAdShowResult)
+        } else {
             activity.runOnUiThread {
-                android.widget.Toast.makeText(activity, "Ads loader issue. Crediting fallback reward...", android.widget.Toast.LENGTH_SHORT).show()
-                simulateAdWatch(tournamentId)
-                onAdShowResult(true)
+                android.widget.Toast.makeText(activity, "Loading Unity video ad, please wait...", android.widget.Toast.LENGTH_SHORT).show()
             }
+            pendingAdTournamentId = tournamentId
+            currentAdActivity = activity
+            currentAdResultCallback = onAdShowResult
+            preloadUnityAd()
         }
     }
 
