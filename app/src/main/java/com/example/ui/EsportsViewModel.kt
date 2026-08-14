@@ -73,34 +73,61 @@ class EsportsViewModel(
     private val _unityInterstitialId = MutableStateFlow("Interstitial_Android")
     val unityInterstitialId: StateFlow<String> = _unityInterstitialId.asStateFlow()
     
-    private var isUnityAdLoaded = false
+    private var isUnityRewardedLoaded = false
+    private var isUnityInterstitialLoaded = false
     private var pendingAdTournamentId: String? = null
+    private var pendingInterstitialRequested = false
     private var currentAdActivity: android.app.Activity? = null
     private var currentAdResultCallback: ((Boolean) -> Unit)? = null
+    private var currentInterstitialResultCallback: ((Boolean) -> Unit)? = null
     
-    private fun preloadUnityAd() {
-        val placementId = _unityRewardedId.value.trim()
-        if (placementId.isNotBlank() && UnityAds.isInitialized) {
-            UnityAds.load(placementId, object : IUnityAdsLoadListener {
-                override fun onUnityAdsAdLoaded(placement: String?) {
-                    isUnityAdLoaded = true
-                    Log.d("UnityAds", "Ad Loaded in Background")
-                    // If a user requested it while loading, show it immediately!
-                    val pendingTourney = pendingAdTournamentId
-                    val activity = currentAdActivity
-                    val callback = currentAdResultCallback
-                    if (pendingTourney != null && activity != null && callback != null) {
-                        pendingAdTournamentId = null
-                        currentAdActivity = null
-                        currentAdResultCallback = null
-                        executeShowUnityAd(activity, placementId, pendingTourney, callback)
+    fun preloadUnityAds() {
+        val rewardedId = _unityRewardedId.value.trim()
+        val interstitialId = _unityInterstitialId.value.trim()
+        
+        if (UnityAds.isInitialized) {
+            if (rewardedId.isNotBlank()) {
+                UnityAds.load(rewardedId, object : IUnityAdsLoadListener {
+                    override fun onUnityAdsAdLoaded(placement: String?) {
+                        isUnityRewardedLoaded = true
+                        Log.d("UnityAds", "Rewarded Ad Loaded in Background")
+                        val pendingTourney = pendingAdTournamentId
+                        val activity = currentAdActivity
+                        val callback = currentAdResultCallback
+                        if (pendingTourney != null && activity != null && callback != null) {
+                            pendingAdTournamentId = null
+                            currentAdActivity = null
+                            currentAdResultCallback = null
+                            executeShowUnityAd(activity, rewardedId, pendingTourney, callback)
+                        }
                     }
-                }
-                override fun onUnityAdsFailedToLoad(placement: String?, error: UnityAds.UnityAdsLoadError?, message: String?) {
-                    isUnityAdLoaded = false
-                    Log.e("UnityAds", "Ad Failed to Load: $message")
-                }
-            })
+                    override fun onUnityAdsFailedToLoad(placement: String?, error: UnityAds.UnityAdsLoadError?, message: String?) {
+                        isUnityRewardedLoaded = false
+                        Log.e("UnityAds", "Rewarded Ad Failed to Load: $message")
+                    }
+                })
+            }
+            if (interstitialId.isNotBlank()) {
+                UnityAds.load(interstitialId, object : IUnityAdsLoadListener {
+                    override fun onUnityAdsAdLoaded(placement: String?) {
+                        isUnityInterstitialLoaded = true
+                        Log.d("UnityAds", "Interstitial Ad Loaded in Background")
+                        val pendingReq = pendingInterstitialRequested
+                        val activity = currentAdActivity
+                        val callback = currentInterstitialResultCallback
+                        if (pendingReq && activity != null && callback != null) {
+                            pendingInterstitialRequested = false
+                            currentAdActivity = null
+                            currentInterstitialResultCallback = null
+                            executeShowUnityInterstitialAd(activity, interstitialId, callback)
+                        }
+                    }
+                    override fun onUnityAdsFailedToLoad(placement: String?, error: UnityAds.UnityAdsLoadError?, message: String?) {
+                        isUnityInterstitialLoaded = false
+                        Log.e("UnityAds", "Interstitial Ad Failed to Load: $message")
+                    }
+                })
+            }
         }
     }
 
@@ -288,7 +315,7 @@ class EsportsViewModel(
                     UnityAds.initialize(context, trimmedGameId, false, object : IUnityAdsInitializationListener {
                         override fun onInitializationComplete() {
                             Log.d("UnityAds", "Unity Ads pre-initialized successfully.")
-                            preloadUnityAd()
+                            preloadUnityAds()
                         }
                         override fun onInitializationFailed(error: UnityAds.UnityAdsInitializationError?, msg: String?) {
                             Log.e("UnityAds", "Unity Ads pre-initialization failed: $msg")
@@ -745,7 +772,7 @@ class EsportsViewModel(
                         android.widget.Toast.makeText(activity, "Failed to present ad: $message. Fetching fallback reward...", android.widget.Toast.LENGTH_SHORT).show()
                         simulateAdWatch(tournamentId)
                         onAdShowResult(true)
-                        preloadUnityAd() // Preload next ad
+                        preloadUnityAds() // Preload next ad
                     }
                 }
 
@@ -762,7 +789,7 @@ class EsportsViewModel(
                             android.widget.Toast.makeText(activity, "Ad video skipped before completion.", android.widget.Toast.LENGTH_SHORT).show()
                             onAdShowResult(false)
                         }
-                        preloadUnityAd() // Preload next ad
+                        preloadUnityAds() // Preload next ad
                     }
                 }
             })
@@ -772,7 +799,7 @@ class EsportsViewModel(
                 android.widget.Toast.makeText(activity, "Ads presenter issue. Crediting fallback reward...", android.widget.Toast.LENGTH_SHORT).show()
                 simulateAdWatch(tournamentId)
                 onAdShowResult(true)
-                preloadUnityAd() // Preload next ad
+                preloadUnityAds() // Preload next ad
             }
         }
     }
@@ -783,8 +810,8 @@ class EsportsViewModel(
         tournamentId: String,
         onAdShowResult: (Boolean) -> Unit
     ) {
-        if (isUnityAdLoaded) {
-            isUnityAdLoaded = false
+        if (isUnityRewardedLoaded) {
+            isUnityRewardedLoaded = false
             executeShowUnityAd(activity, placementId, tournamentId, onAdShowResult)
         } else {
             activity.runOnUiThread {
@@ -793,7 +820,7 @@ class EsportsViewModel(
             pendingAdTournamentId = tournamentId
             currentAdActivity = activity
             currentAdResultCallback = onAdShowResult
-            preloadUnityAd()
+            preloadUnityAds()
         }
     }
 
@@ -1746,5 +1773,68 @@ class EsportsViewModel(
             "type" to type
         )
         FirebaseDatabase.getInstance().getReference("notifications/$emailKey/$id").setValue(notif)
+    }
+
+    fun showUnityInterstitialAd(activity: android.app.Activity, onAdClosed: (Boolean) -> Unit = {}) {
+        val gameId = _unityGameId.value.trim()
+        val interstitialId = _unityInterstitialId.value.trim()
+        
+        if (gameId.isBlank() || interstitialId.isBlank()) {
+            onAdClosed(true)
+            return
+        }
+        
+        activity.runOnUiThread {
+            if (!UnityAds.isInitialized) {
+                UnityAds.initialize(activity, gameId, false, object : IUnityAdsInitializationListener {
+                    override fun onInitializationComplete() {
+                        loadAndShowInterstitialPlayback(activity, interstitialId, onAdClosed)
+                    }
+                    override fun onInitializationFailed(error: UnityAds.UnityAdsInitializationError?, msg: String?) {
+                        onAdClosed(true)
+                    }
+                })
+            } else {
+                loadAndShowInterstitialPlayback(activity, interstitialId, onAdClosed)
+            }
+        }
+    }
+    
+    private fun loadAndShowInterstitialPlayback(activity: android.app.Activity, placementId: String, onAdClosed: (Boolean) -> Unit) {
+        if (isUnityInterstitialLoaded) {
+            isUnityInterstitialLoaded = false
+            executeShowUnityInterstitialAd(activity, placementId, onAdClosed)
+        } else {
+            pendingInterstitialRequested = true
+            currentAdActivity = activity
+            currentInterstitialResultCallback = onAdClosed
+            preloadUnityAds()
+        }
+    }
+    
+    private fun executeShowUnityInterstitialAd(activity: android.app.Activity, placementId: String, onAdClosed: (Boolean) -> Unit) {
+        try {
+            UnityAds.show(activity, placementId, UnityAdsShowOptions(), object : IUnityAdsShowListener {
+                override fun onUnityAdsShowFailure(placement: String?, error: UnityAds.UnityAdsShowError?, message: String?) {
+                    activity.runOnUiThread {
+                        onAdClosed(true)
+                        preloadUnityAds()
+                    }
+                }
+                override fun onUnityAdsShowStart(placement: String?) {}
+                override fun onUnityAdsShowClick(placement: String?) {}
+                override fun onUnityAdsShowComplete(placement: String?, state: UnityAds.UnityAdsShowCompletionState?) {
+                    activity.runOnUiThread {
+                        onAdClosed(true)
+                        preloadUnityAds()
+                    }
+                }
+            })
+        } catch (e: Exception) {
+            activity.runOnUiThread {
+                onAdClosed(true)
+                preloadUnityAds()
+            }
+        }
     }
 }

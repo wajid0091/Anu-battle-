@@ -206,6 +206,8 @@ fun EsportsApp(viewModel: EsportsViewModel) {
                                     "referrals" -> ReferralsScreen(viewModel = viewModel, onBack = { activeScreen = previousScreen })
                                 }
                             }
+                            // Global Unity Banner Ad shown above Bottom Navigation
+                            UnityBannerAd()
                         }
                     }
                 }
@@ -1234,18 +1236,35 @@ fun TournamentCard(
                     }
 
                     // Title & Description (Overlay on Image Bottom)
-                    Column {
-                        Text(
-                            text = tournament.title,
-                            color = Color.White,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                        Text(
-                            text = "${tournament.gameType} Tournament • Map: ${tournament.mapType}",
-                            color = Color.LightGray.copy(alpha = 0.9f),
-                            fontSize = 11.sp
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = tournament.title,
+                                color = Color.White,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "${tournament.gameType} Tournament • Map: ${tournament.mapType}",
+                                color = Color.LightGray.copy(alpha = 0.9f),
+                                fontSize = 11.sp
+                            )
+                        }
+                        
+                        if (tournament.status == "OPEN") {
+                            Button(
+                                onClick = onClick,
+                                colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                                modifier = Modifier.height(30.dp)
+                            ) {
+                                Text("JOIN", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }
@@ -1411,6 +1430,10 @@ fun TournamentDetailScreen(
                                             adCountWatched = adsWatchedForRegister,
                                             onSuccess = {
                                                 Toast.makeText(context, "Successfully joined tournament lobby!", Toast.LENGTH_LONG).show()
+                                                val activity = context.findActivity()
+                                                if (activity != null) {
+                                                    viewModel.showUnityInterstitialAd(activity)
+                                                }
                                             },
                                             onError = { error ->
                                                 Toast.makeText(context, error, Toast.LENGTH_LONG).show()
