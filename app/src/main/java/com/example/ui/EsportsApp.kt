@@ -190,7 +190,10 @@ fun EsportsApp(viewModel: EsportsViewModel) {
                                 when (activeScreen) {
                                     "home" -> HomeScreen(
                                         viewModel = viewModel,
-                                        onNavigate = { activeScreen = it },
+                                        onNavigate = { 
+                                            previousScreen = activeScreen
+                                            activeScreen = it 
+                                        },
                                         onSelectTournament = { selectedTournamentId = it }
                                     )
                                     "games" -> GamesScreen(
@@ -901,10 +904,10 @@ fun HomeScreen(viewModel: EsportsViewModel, onNavigate: (String) -> Unit, onSele
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 FastGridButton(
-                    title = "Tournaments",
-                    icon = Icons.Default.SportsEsports,
+                    title = "Invite Friend",
+                    icon = Icons.Default.PersonAdd,
                     color = NeonGold,
-                    onClick = { onNavigate("games") }
+                    onClick = { onNavigate("referrals") }
                 )
                 FastGridButton(
                     title = "Gold Store",
@@ -3083,16 +3086,36 @@ fun ReferralsScreen(viewModel: EsportsViewModel, onBack: () -> Unit) {
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
+                
+                val inviteMessage = "Join the ultimate Esports tournaments on Anu Battle! \uD83C\uDFAE\uD83C\uDFC6\nUse my invite code: ${user.referCode}\nDownload the app here: https://anu-battle-tournament.freedev.app/"
+                
                 Button(
                     onClick = {
                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        val clip = android.content.ClipData.newPlainText("Referral Code", user.referCode)
+                        val clip = android.content.ClipData.newPlainText("Invite Link", inviteMessage)
                         clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, "Copied to clipboard!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Invite link & code copied!", Toast.LENGTH_SHORT).show()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonGold)
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonGold),
+                    contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier.width(48.dp).height(48.dp)
                 ) {
                     Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "Copy", tint = CharcoalBg)
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                Button(
+                    onClick = {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_TEXT, inviteMessage)
+                        }
+                        context.startActivity(android.content.Intent.createChooser(intent, "Share via"))
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonOrange),
+                    contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier.width(48.dp).height(48.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Share, contentDescription = "Share", tint = Color.White)
                 }
             }
             
