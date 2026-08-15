@@ -876,7 +876,7 @@ class EsportsViewModel(
         for (match in allMatches) {
             val lastWatched = sharedPrefs.getLong("last_watched_${match.id}", 0L)
             val elapsed = (now - lastWatched) / 1000
-            val remaining = (120 - elapsed).toInt()
+            val remaining = (60 - elapsed).toInt()
             if (lastWatched > 0 && remaining > 0) {
                 currentCooldowns[match.id] = remaining
             }
@@ -1425,6 +1425,20 @@ class EsportsViewModel(
         }
     }
 
+    fun adminAddBotsToTournament(tournamentId: String, botCount: Int, onComplete: (String) -> Unit = {}) {
+        val admin = _currentUser.value ?: return
+        val isManaged = admin.managedTournamentIds.split(",").map { it.trim() }.contains(tournamentId)
+        val canManage = admin.isAdmin || (admin.isHostManager && admin.hostTournaments && (admin.managedTournamentIds.isBlank() || isManaged))
+        if (!canManage) return
+        
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val t = tournaments.value.find { it.id == tournamentId } ?: return@launch
+            val updatedTournament = t.copy(slotsFilled = t.slotsFilled + botCount)
+            syncManager.saveTournamentDirectly(updatedTournament)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { onComplete("Added $botCount bots successfully!") }
+        }
+    }
+
     fun adminDeleteTaskTemplate(id: String) {
         if (_currentUser.value?.isAdmin == true) {
             syncManager.deleteTaskTemplateDirectly(id)
@@ -1838,3 +1852,4 @@ class EsportsViewModel(
         }
     }
 }
+

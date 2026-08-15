@@ -1978,7 +1978,7 @@ fun TournamentDetailScreen(
                                 Button(
                                     onClick = {
                                         if (remainingCd > 0) {
-                                            Toast.makeText(context, "Ad cooldown active! Clean registration rules apply.", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Please wait ${remainingCd} seconds before watching the next ad.", Toast.LENGTH_SHORT).show()
                                         } else {
                                             val activity = context.findActivity()
                                             if (activity != null) {
@@ -1999,7 +1999,7 @@ fun TournamentDetailScreen(
                                     shape = RoundedCornerShape(8.dp),
                                     enabled = remainingCd == 0 && adsWatchedForRegister < tournament.adsRequired
                                 ) {
-                                    val adLabel = if (remainingCd > 0) "WAIT COOLDOWN" else "PLAY REWARDED VIDEO"
+                                    val adLabel = if (remainingCd > 0) "WAIT ${remainingCd}s" else "PLAY REWARDED VIDEO"
                                     Text(text = adLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
@@ -2816,7 +2816,7 @@ fun RewardsScreen(viewModel: EsportsViewModel) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Watch Ads to Earn 10,000+ Coins", color = if (remainingCd == 0) NeonGold else Color.Gray, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Text(
-                            if (remainingCd > 0) "Cooldown active! Please wait ${remainingCd}s to watch again." else "Watch short video clips to gather coins for Diamond redemption.",
+                            if (remainingCd > 0) "Cooldown active! Please wait ${remainingCd} seconds to watch again." else "Watch short video clips to gather coins for Diamond redemption.",
                             color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(top=4.dp))
                     }
                     Icon(
@@ -4672,12 +4672,42 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                 modifier = Modifier.fillMaxWidth().heightIn(max = 600.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp).fillMaxSize()) {
-                    Text(
-                        text = "Tournament Players",
-                        color = NeonGold,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Tournament Players",
+                            color = NeonGold,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        var botsToAdd by remember { mutableStateOf("") }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.OutlinedTextField(
+                                value = botsToAdd,
+                                onValueChange = { botsToAdd = it },
+                                modifier = Modifier.width(65.dp).height(45.dp),
+                                textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 12.sp),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                                singleLine = true
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Button(
+                                onClick = { 
+                                    val count = botsToAdd.toIntOrNull() ?: 0
+                                    if(count > 0 && t != null) {
+                                        viewModel.adminAddBotsToTournament(t.id, count) { msg ->
+                                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                        }
+                                        botsToAdd = ""
+                                    }
+                                },
+                                contentPadding = PaddingValues(0.dp),
+                                modifier = Modifier.height(35.dp).width(50.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = NeonOrange)
+                            ) {
+                                Text("+BOTS", fontSize=10.sp)
+                            }
+                        }
+                    }
                     Text("Distribute Prize Pool for ${t?.title ?: ""}", color = Color.Gray, fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(12.dp))
 

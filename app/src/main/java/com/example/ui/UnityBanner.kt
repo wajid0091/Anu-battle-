@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Activity
+import android.util.Log
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.*
