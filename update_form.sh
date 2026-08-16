@@ -1,0 +1,1 @@
+sed -i 's/Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {/Column(modifier = Modifier.padding(16.dp).navigationBarsPadding().imePadding().verticalScroll(rememberScrollState())) {/' app/src/main/java/com/example/ui/EsportsApp.kt

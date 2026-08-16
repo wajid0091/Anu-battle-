@@ -1,0 +1,201 @@
+  4460	                    Text("Note: Banner image should be 1200x500 for best display.", color = Color.Gray, fontSize = 10.sp)
+  4461	                    Button(
+  4462	                        onClick = { imagePickerLauncher.launch("image/*") },
+  4463	                        colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
+  4464	                        modifier = Modifier.fillMaxWidth()
+  4465	                    ) {
+  4466	                        Text(if (uploadingImage) "Uploading..." else if (bannerUrl.isNotEmpty()) "Change Banner Image" else "Upload Banner Image", color = Color.White)
+  4467	                    }
+  4468	
+  4469	                    Spacer(modifier = Modifier.height(8.dp))
+  4470	
+  4471	                    OutlinedTextField(
+  4472	                        value = title,
+  4473	                        onValueChange = { title = it },
+  4474	                        label = { Text("Match Title") },
+  4475	                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+  4476	                        modifier = Modifier.fillMaxWidth()
+  4477	                    )
+  4478	
+  4479	                    Spacer(modifier = Modifier.height(8.dp))
+  4480	
+  4481	                    OutlinedTextField(
+  4482	                        value = description,
+  4483	                        onValueChange = { description = it },
+  4484	                        label = { Text("Rules & Description") },
+  4485	                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+  4486	                        modifier = Modifier.fillMaxWidth(),
+  4487	                        maxLines = 5
+  4488	                    )
+  4489	
+  4490	                    Spacer(modifier = Modifier.height(8.dp))
+  4491	                    Text("Tournament Type", color = Color.White, fontWeight = FontWeight.Bold)
+  4492	                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+  4493	                        listOf("PAID", "FREE").forEach { type ->
+  4494	                            val isSelected = if (type == "FREE") entryCurrency == "FREE" else entryCurrency != "FREE"
+  4495	                            androidx.compose.material3.FilterChip(
+  4496	                                selected = isSelected,
+  4497	                                onClick = { 
+  4498	                                    if (type == "FREE") entryCurrency = "FREE"
+  4499	                                    else if (entryCurrency == "FREE") entryCurrency = "CASH"
+  4500	                                },
+  4501	                                label = { Text(type) },
+  4502	                                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = NeonGold, selectedLabelColor = CharcoalBg, labelColor = Color.White)
+  4503	                            )
+  4504	                        }
+  4505	                    }
+  4506	
+  4507	                    Spacer(modifier = Modifier.height(8.dp))
+  4508	                    Text("Match Format", color = Color.White, fontWeight = FontWeight.Bold)
+  4509	                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+  4510	                        listOf("Classic", "Clash Squad", "1v1", "2v2", "4v4").forEach { fmt ->
+  4511	                            androidx.compose.material3.FilterChip(
+  4512	                                selected = format == fmt,
+  4513	                                onClick = { format = fmt },
+  4514	                                label = { Text(fmt) },
+  4515	                                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = NeonGold, selectedLabelColor = CharcoalBg, labelColor = Color.White)
+  4516	                            )
+  4517	                        }
+  4518	                    }
+  4519	
+  4520	                    Spacer(modifier = Modifier.height(8.dp))
+  4521	                    if (entryCurrency != "FREE") {
+  4522	                        Text("Entry Fee Currency", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+  4523	                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  4524	                            listOf("CASH", "COINS").forEach { type ->
+  4525	                                androidx.compose.material3.FilterChip(
+  4526	                                    selected = entryCurrency == type,
+  4527	                                    onClick = { entryCurrency = type },
+  4528	                                    label = { Text(type) },
+  4529	                                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = NeonGold, selectedLabelColor = CharcoalBg, labelColor = Color.White)
+  4530	                                )
+  4531	                            }
+  4532	                        }
+  4533	                        OutlinedTextField(
+  4534	                            value = entryFee,
+  4535	                            onValueChange = { entryFee = it },
+  4536	                            label = { Text("Entry Fee Amount") },
+  4537	                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+  4538	                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+  4539	                            modifier = Modifier.fillMaxWidth()
+  4540	                        )
+  4541	                        Spacer(modifier = Modifier.height(8.dp))
+  4542	                    } else {
+  4543	                        OutlinedTextField(
+  4544	                            value = adsRequired,
+  4545	                            onValueChange = { adsRequired = it },
+  4546	                            label = { Text("Ads Required Watch Target") },
+  4547	                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+  4548	                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+  4549	                            modifier = Modifier.fillMaxWidth()
+  4550	                        )
+  4551	                        Spacer(modifier = Modifier.height(8.dp))
+  4552	                    }
+  4553	
+  4554	
+  4555	                    Text("Total Prize Pool Currency", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+  4556	                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  4557	                        listOf("CASH", "COINS").forEach { type ->
+  4558	                            androidx.compose.material3.FilterChip(
+  4559	                                selected = prizeCurrency == type,
+  4560	                                onClick = { prizeCurrency = type },
+  4561	                                label = { Text(type) },
+  4562	                                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = NeonGold, selectedLabelColor = CharcoalBg, labelColor = Color.White)
+  4563	                            )
+  4564	                        }
+  4565	                    }
+  4566	                    OutlinedTextField(
+  4567	                        value = prizePool,
+  4568	                        onValueChange = { prizePool = it },
+  4569	                        label = { Text("Total Prize Pool Amount") },
+  4570	                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+  4571	                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+  4572	                        modifier = Modifier.fillMaxWidth()
+  4573	                    )
+  4574	                    Spacer(modifier = Modifier.height(8.dp))
+  4575	
+  4576	                    Row(verticalAlignment = Alignment.CenterVertically) {
+  4577	                        androidx.compose.material3.Switch(
+  4578	                            checked = isPerKillEnabled,
+  4579	                            onCheckedChange = { isPerKillEnabled = it },
+  4580	                            colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = NeonGold)
+  4581	                        )
+  4582	                        Spacer(modifier = Modifier.width(8.dp))
+  4583	                        Text("Enable Per Kill Reward", color = Color.White)
+  4584	                    }
+  4585	                    if (isPerKillEnabled) {
+  4586	                        Spacer(modifier = Modifier.height(8.dp))
+  4587	                        Text("Per Kill Currency", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+  4588	                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  4589	                            listOf("CASH", "COINS").forEach { type ->
+  4590	                                androidx.compose.material3.FilterChip(
+  4591	                                    selected = currencyType == type,
+  4592	                                    onClick = { currencyType = type },
+  4593	                                    label = { Text(type) },
+  4594	                                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = NeonGold, selectedLabelColor = CharcoalBg, labelColor = Color.White)
+  4595	                                )
+  4596	                            }
+  4597	                        }
+  4598	                        OutlinedTextField(
+  4599	                            value = perKillPrize,
+  4600	                            onValueChange = { perKillPrize = it },
+  4601	                            label = { Text("Per Kill Reward Amount") },
+  4602	                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+  4603	                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+  4604	                            modifier = Modifier.fillMaxWidth()
+  4605	                        )
+  4606	                    }
+  4607	                    Spacer(modifier = Modifier.height(8.dp))
+  4608	
+  4609	                    OutlinedTextField(
+  4610	                        value = rankPrizes,
+  4611	                        onValueChange = { rankPrizes = it },
+  4612	                        label = { Text("Rank Prizes (e.g. 100 CASH, 50 COINS)") },
+  4613	                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+  4614	                        modifier = Modifier.fillMaxWidth()
+  4615	                    )
+  4616	                    Spacer(modifier = Modifier.height(8.dp))
+  4617	                    Row(verticalAlignment = Alignment.CenterVertically) {
+  4618	                        androidx.compose.material3.Switch(
+  4619	                            checked = showRewardIndex,
+  4620	                            onCheckedChange = { showRewardIndex = it },
+  4621	                            colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = NeonGold)
+  4622	                        )
+  4623	                        Spacer(modifier = Modifier.width(8.dp))
+  4624	                        Text("Show Reward Index (Rank Prizes)", color = Color.White)
+  4625	                    }
+  4626	
+  4627	
+  4628	                    Spacer(modifier = Modifier.height(8.dp))
+  4629	                    
+  4630	                    OutlinedTextField(
+  4631	                        value = totalSlots,
+  4632	                        onValueChange = { totalSlots = it },
+  4633	                        label = { Text("Total Slots") },
+  4634	                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+  4635	                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+  4636	                        modifier = Modifier.fillMaxWidth()
+  4637	                    )
+  4638	                    Spacer(modifier = Modifier.height(8.dp))
+  4639	                    
+  4640	                    OutlinedTextField(
+  4641	                        value = roomId,
+  4642	                        onValueChange = { roomId = it },
+  4643	                        label = { Text("Lobby Pass ID (Will unlock 10 mins before)") },
+  4644	                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+  4645	                        modifier = Modifier.fillMaxWidth()
+  4646	                    )
+  4647	                    Spacer(modifier = Modifier.height(8.dp))
+  4648	                    
+  4649	                    OutlinedTextField(
+  4650	                        value = roomPassword,
+  4651	                        onValueChange = { roomPassword = it },
+  4652	                        label = { Text("Lobby Pass Secret") },
+  4653	                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
+  4654	                        modifier = Modifier.fillMaxWidth()
+  4655	                    )
+  4656	
+  4657	                    Spacer(modifier = Modifier.height(8.dp))
+  4658	                    OutlinedTextField(
+  4659	                        value = scheduleDate,
+  4660	                        onValueChange = { scheduleDate = it },

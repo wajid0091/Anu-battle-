@@ -35,6 +35,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -1290,11 +1291,8 @@ fun TournamentCard(
                         Text(text = "PRIZE POOL", color = GrayText, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = when (tournament.currencyType) {
-                                "COINS" -> "${tournament.prizePool.toInt()} Coins"
-                                "DIAMONDS" -> "${tournament.prizePool.toInt()} Diamonds"
-                                else -> "Rs.${tournament.prizePool.toInt()}"
-                            },
+                            text = if (tournament.prizeCurrency == "COINS") "${tournament.prizePool.toInt()} Coins" else "Rs.${tournament.prizePool.toInt()}",
+
                             color = NeonGold,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
@@ -1303,16 +1301,15 @@ fun TournamentCard(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(text = "ENTRY FEE", color = GrayText, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(2.dp))
-                        val entryText = when (tournament.currencyType) {
+                        val entryText = when (tournament.entryCurrency) {
                             "COINS" -> "${tournament.entryFee.toInt()} Coins"
-                            "DIAMONDS" -> "${tournament.entryFee.toInt()} Diamonds"
                             "FREE" -> "FREE"
                             else -> if (tournament.entryFee == 0.0) "FREE" else "Rs.${tournament.entryFee.toInt()}"
                         }
-                        Text(
-                            text = entryText,
-                            color = Color.White,
-                            fontSize = 14.sp,
+                            Text(
+                                text = entryText,
+                                color = Color.White,
+                                fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -1414,9 +1411,8 @@ fun TournamentDetailScreen(
                                 fontSize = 11.sp
                             )
                             Spacer(modifier = Modifier.height(2.dp))
-                            val entryText = when (tournament.currencyType) {
+                            val entryText = when (tournament.entryCurrency) {
                                 "COINS" -> "${tournament.entryFee.toInt()} Coins"
-                                "DIAMONDS" -> "${tournament.entryFee.toInt()} Diamonds"
                                 "FREE" -> "FREE"
                                 else -> if (tournament.entryFee == 0.0) "FREE" else "Rs.${tournament.entryFee.toInt()}"
                             }
@@ -1443,7 +1439,7 @@ fun TournamentDetailScreen(
                                 )
                             }
                         } else {
-                            val adRequiredButNotDone = tournament.currencyType == "FREE" && tournament.adsRequired > 0 && adsWatchedForRegister < tournament.adsRequired
+                            val adRequiredButNotDone = tournament.entryCurrency == "FREE" && tournament.adsRequired > 0 && adsWatchedForRegister < tournament.adsRequired
                             Button(
                                 onClick = {
                                     if (adRequiredButNotDone) {
@@ -1644,14 +1640,13 @@ fun TournamentDetailScreen(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Rs.${tournament.prizePool}",
+                                text = if (tournament.prizeCurrency == "COINS") "${tournament.prizePool.toInt()} Coins" else "Rs.${tournament.prizePool.toInt()}",
                                 color = Color.White,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
-
                     // Card 2: Date & Time
                     val sdf = SimpleDateFormat("EE dd MMM", Locale.getDefault())
                     val timeSdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
@@ -1768,7 +1763,7 @@ fun TournamentDetailScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text("Reward Per Kill", color = GrayText, fontSize = 13.sp)
-                                    Text(if (tournament.currencyType == "COINS") "${tournament.perKillPrize.toInt()} Coins" else if (tournament.currencyType == "DIAMONDS") "${tournament.perKillPrize.toInt()} Diamonds" else "Rs.${tournament.perKillPrize}", color = NeonGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(if (tournament.currencyType == "COINS") "${tournament.perKillPrize.toInt()} Coins" else "Rs.${tournament.perKillPrize}", color = NeonGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                             if (hasPerKill && tournament.rankPrizes.isNotBlank()) {
@@ -1785,7 +1780,8 @@ fun TournamentDetailScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
                                             Text("#${index + 1} Rank Prizes", color = Color.LightGray, fontSize = 12.sp)
-                                            Text(if (tournament.currencyType == "COINS") "$safePrize Coins" else if (tournament.currencyType == "DIAMONDS") "$safePrize Diamonds" else "Rs.$safePrize", color = MintGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            val displayText = if (safePrize.contains("CASH", ignoreCase = true) || safePrize.contains("COIN", ignoreCase = true)) safePrize.uppercase() else if (tournament.prizeCurrency == "COINS") "$safePrize Coins" else "Rs.$safePrize"
+                                            Text(displayText, color = MintGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -4453,7 +4449,7 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                 colors = CardDefaults.cardColors(containerColor = CharcoalBg),
                 modifier = Modifier.fillMaxSize()
             ) {
-                Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
+                Column(modifier = Modifier.padding(16.dp).navigationBarsPadding().imePadding().verticalScroll(rememberScrollState())) {
                     Text(
                         text = if (editingTournamentId == null) "Create Playroom Lobby" else "Edit Tournament Match",
                         color = NeonGold,
@@ -4478,7 +4474,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                         onValueChange = { title = it },
                         label = { Text("Match Title") },
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                        modifier = Modifier.fillMaxWidth()
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -4488,20 +4485,21 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                         onValueChange = { description = it },
                         label = { Text("Rules & Description") },
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth(),
                         maxLines = 5
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Currency Format", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Tournament Type", color = Color.White, fontWeight = FontWeight.Bold)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                        listOf("CASH", "COINS", "DIAMONDS", "FREE").forEach { type ->
+                        listOf("PAID", "FREE").forEach { type ->
+                            val isSelected = if (type == "FREE") entryCurrency == "FREE" else entryCurrency != "FREE"
                             androidx.compose.material3.FilterChip(
-                                selected = currencyType == type,
+                                selected = isSelected,
                                 onClick = { 
-                                    currencyType = type
-                                    entryCurrency = type
-                                    prizeCurrency = type
+                                    if (type == "FREE") entryCurrency = "FREE"
+                                    else if (entryCurrency == "FREE") entryCurrency = "CASH"
                                 },
                                 label = { Text(type) },
                                 colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = NeonGold, selectedLabelColor = CharcoalBg, labelColor = Color.White)
@@ -4523,14 +4521,25 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
-                    if (currencyType != "FREE") {
+                    if (entryCurrency != "FREE") {
+                        Text("Entry Fee Currency", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("CASH", "COINS").forEach { type ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = entryCurrency == type,
+                                    onClick = { entryCurrency = type },
+                                    label = { Text(type) },
+                                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = NeonGold, selectedLabelColor = CharcoalBg, labelColor = Color.White)
+                                )
+                            }
+                        }
                         OutlinedTextField(
                             value = entryFee,
                             onValueChange = { entryFee = it },
-                            label = { Text("Entry Fee (${currencyType})") },
+                            label = { Text("Entry Fee Amount") },
                             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth()
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     } else {
@@ -4539,20 +4548,31 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                             onValueChange = { adsRequired = it },
                             label = { Text("Ads Required Watch Target") },
                             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth()
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
 
+                    Text("Total Prize Pool Currency", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("CASH", "COINS").forEach { type ->
+                            androidx.compose.material3.FilterChip(
+                                selected = prizeCurrency == type,
+                                onClick = { prizeCurrency = type },
+                                label = { Text(type) },
+                                colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = NeonGold, selectedLabelColor = CharcoalBg, labelColor = Color.White)
+                            )
+                        }
+                    }
                     OutlinedTextField(
                         value = prizePool,
                         onValueChange = { prizePool = it },
-                        label = { Text("Total Prize Pool (${currencyType})") },
+                        label = { Text("Total Prize Pool Amount") },
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                        modifier = Modifier.fillMaxWidth(), singleLine = true
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -4567,13 +4587,24 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                     }
                     if (isPerKillEnabled) {
                         Spacer(modifier = Modifier.height(8.dp))
+                        Text("Per Kill Currency", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("CASH", "COINS").forEach { type ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = currencyType == type,
+                                    onClick = { currencyType = type },
+                                    label = { Text(type) },
+                                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(selectedContainerColor = NeonGold, selectedLabelColor = CharcoalBg, labelColor = Color.White)
+                                )
+                            }
+                        }
                         OutlinedTextField(
                             value = perKillPrize,
                             onValueChange = { perKillPrize = it },
-                            label = { Text("Per Kill Reward (${currencyType})") },
+                            label = { Text("Per Kill Reward Amount") },
                             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth()
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
@@ -4581,9 +4612,10 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                     OutlinedTextField(
                         value = rankPrizes,
                         onValueChange = { rankPrizes = it },
-                        label = { Text("Rank Allocations e.g (100,50,20) Optional") },
+                        label = { Text("Rank Prizes (e.g. 100 CASH, 50 COINS)") },
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                        modifier = Modifier.fillMaxWidth()
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -4597,7 +4629,6 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                     }
 
 
-
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     OutlinedTextField(
@@ -4605,8 +4636,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                         onValueChange = { totalSlots = it },
                         label = { Text("Total Slots") },
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                        modifier = Modifier.fillMaxWidth(), singleLine = true
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     
@@ -4615,7 +4646,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                         onValueChange = { roomId = it },
                         label = { Text("Lobby Pass ID (Will unlock 10 mins before)") },
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                        modifier = Modifier.fillMaxWidth()
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     
@@ -4624,7 +4656,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                         onValueChange = { roomPassword = it },
                         label = { Text("Lobby Pass Secret") },
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                        modifier = Modifier.fillMaxWidth()
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -4633,7 +4666,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                         onValueChange = { scheduleDate = it },
                         label = { Text("Match Date (YYYY-MM-DD)") },
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                        modifier = Modifier.fillMaxWidth()
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
@@ -4641,7 +4675,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                         onValueChange = { scheduleTime = it },
                         label = { Text("Match Time (HH:MM 24-Hour)") },
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                        modifier = Modifier.fillMaxWidth()
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
@@ -4649,7 +4684,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                         onValueChange = { regDate = it },
                         label = { Text("Registration Open Date (YYYY-MM-DD)") },
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                        modifier = Modifier.fillMaxWidth()
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
@@ -4657,7 +4693,8 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                         onValueChange = { regTime = it },
                         label = { Text("Registration Open Time (HH:MM 24-Hour)") },
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White),
-                        modifier = Modifier.fillMaxWidth()
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
                     )
 
 
@@ -4759,6 +4796,7 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                             Text("SAVE", color = CharcoalBg, fontWeight = FontWeight.Bold)
                         }
                     }
+                    Spacer(modifier = Modifier.height(48.dp))
                 }
             }
         }
@@ -4860,9 +4898,9 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                                             }
                                         },
                                         placeholder = { Text("Reward amount", fontSize = 12.sp) },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
                                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.LightGray),
-                                        modifier = Modifier.fillMaxWidth().height(50.dp)
+                                        modifier = Modifier.fillMaxWidth().height(50.dp), singleLine = true
                                     )
                                 }
                             }
@@ -4910,6 +4948,7 @@ fun AdminTournamentsCreatorTab(viewModel: EsportsViewModel) {
                     ) {
                         Text("CLOSE", color = Color.White)
                     }
+                    Spacer(modifier = Modifier.height(48.dp))
                 }
             }
         }
