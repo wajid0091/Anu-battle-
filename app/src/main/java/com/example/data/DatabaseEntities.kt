@@ -57,7 +57,11 @@ data class TournamentEntity(
     val description: String = "",
     val showRewardIndex: Boolean = true,
     val entryCurrency: String = "CASH", // "CASH", "COINS", "FREE"
-    val prizeCurrency: String = "CASH"  // "CASH", "COINS"
+    val prizeCurrency: String = "CASH",
+    val registrationOpenTimeMillis: Long = System.currentTimeMillis(),
+    val format: String = "Classic",
+    val currencyType: String = "CASH",
+    val isPerKillEnabled: Boolean = true  // "CASH", "COINS"
 )
 
 @Entity(tableName = "app_config")
@@ -293,7 +297,7 @@ interface EsportsDao {
         NotificationEntity::class,
         TournamentAdProgressEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
