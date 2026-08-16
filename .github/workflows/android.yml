@@ -13,37 +13,24 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        
+    # یہ سٹیپ اس کرپٹڈ فائل کو ڈیلیٹ کر دے گا تاکہ گٹ ہب کا سیکیورٹی چیک اسے بلاک نہ کرے
+    - name: Delete corrupted wrapper
+      run: rm -rf gradle/wrapper/
+
+    # اب یہ بالکل آفیشل اور فریش گریڈل ڈاؤن لوڈ کرے گا
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: 9.3.1
 
-    - name: Create .env file (Required for Build)
-      run: |
-        if [ -f ".env.example" ]; then
-          cp .env.example .env
-        else
-          touch .env
-        fi
-
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-
-    - name: Generate dummy debug keystore (if missing)
-      run: |
-        if [ ! -f "debug.keystore" ]; then
-          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "C=US, O=Android, CN=Android Debug"
-        fi
+    - name: Generate dummy debug keystore
+      run: keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "C=US, O=Android, CN=Android Debug"
 
     - name: Build Debug APK
-      run: ./gradlew assembleDebug
+      run: gradle assembleDebug
 
-    - name: Upload APK Artifact
+    - name: Upload all APKs
       uses: actions/upload-artifact@v4
       with:
-        name: esports-app-debug-apk
-        path: app/build/outputs/apk/debug/*.apk
+        name: Anu-Battle-APK
+        path: '**/*.apk'
