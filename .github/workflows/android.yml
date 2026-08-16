@@ -18,25 +18,32 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
+        
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
 
-    - name: Find and setup gradlew
-      run: find . -name "gradlew" -exec chmod +x {} + || true
-
-    - name: Generate dummy debug keystore
-      run: keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "C=US, O=Android, CN=Android Debug"
-
-    - name: Build Debug APK
+    - name: Create .env file (Required for Build)
       run: |
-        if [ -f "gradlew" ]; then
-          ./gradlew assembleDebug
-        elif [ -d "android" ] && [ -f "android/gradlew" ]; then
-          cd android && ./gradlew assembleDebug
+        if [ -f ".env.example" ]; then
+          cp .env.example .env
         else
-          gradle assembleDebug
+          touch .env
         fi
 
-    - name: Upload all APKs
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Generate dummy debug keystore (if missing)
+      run: |
+        if [ ! -f "debug.keystore" ]; then
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "C=US, O=Android, CN=Android Debug"
+        fi
+
+    - name: Build Debug APK
+      run: ./gradlew assembleDebug
+
+    - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: my-android-app
-        path: '**/*.apk'
+        name: esports-app-debug-apk
+        path: app/build/outputs/apk/debug/*.apk
